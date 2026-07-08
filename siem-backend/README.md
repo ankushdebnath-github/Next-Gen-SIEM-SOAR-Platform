@@ -1,176 +1,306 @@
-# SIEM / SOAR Platform — Backend (Phase 1)
+# 🔧 SIEM / SOAR — Backend
 
-Real-time cybersecurity event streaming engine built on **Node.js · Express · MongoDB · Socket.io**.  
-Designed as the data backbone for a Next-Gen SIEM and SOAR visualization platform (Angular frontend in Phase 2).
+> Node.js · Express · Socket.io · MongoDB · VirusTotal · Shodan
+
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-green?style=for-the-badge&logo=node.js)
+![Express](https://img.shields.io/badge/Express-4.x-lightgrey?style=for-the-badge&logo=express)
+![Socket.io](https://img.shields.io/badge/Socket.io-4.x-black?style=for-the-badge&logo=socket.io)
+![MongoDB](https://img.shields.io/badge/MongoDB-8.x-brightgreen?style=for-the-badge&logo=mongodb)
 
 ---
 
-## Architecture
+## 📁 Folder Structure
 
 ```
 siem-backend/
-├── src/
-│   ├── config/
-│   │   └── database.js          # Mongoose connection + lifecycle hooks
-│   ├── models/
-│   │   └── ThreatEvent.js       # Mongoose schema + indexes + toSocketPayload()
-│   ├── services/
-│   │   ├── threatGenerator.js   # Randomised attack-event factory
-│   │   └── threatWorker.js      # setInterval worker — generate → save → broadcast
-│   └── server.js                # Express app + Socket.io bootstrap + REST API
-├── .env.example                 # Environment variable template
-├── .gitignore
-└── package.json
+│
+├── 📄 package.json
+├── 📄 .env.example
+├── 📄 .gitignore
+│
+└── 📁 src/
+    ├── 📄 server.js                       ← Entry point
+    │
+    ├── 📁 config/
+    │   └── 📄 database.js                 ← Mongoose connection
+    │
+    ├── 📁 models/
+    │   ├── 📄 ThreatEvent.js              ← Attack event schema
+    │   └── 📄 ThreatIntelligence.js       ← OSINT intel schema
+    │
+    └── 📁 services/
+        ├── 📄 threatGenerator.js          ← Creates fake threat events
+        ├── 📄 threatWorker.js             ← Runs on interval (800ms)
+        └── 📄 osint-enrichment.service.js ← VirusTotal + Shodan calls
 ```
 
 ---
 
-## Prerequisites
+## 🔄 How the Backend Works — Full Flow
 
-| Requirement | Version |
-|---|---|
-| Node.js | ≥ 18.x |
-| npm | ≥ 9.x |
-| MongoDB | ≥ 6.x (local or Atlas) |
-
----
-
-## Quick Start
-
-```bash
-# 1. Install dependencies
-cd siem-backend
-npm install
-
-# 2. Create your local environment file
-cp .env.example .env
-# Edit .env and set MONGODB_URI if using Atlas
-
-# 3. Start in development mode (auto-restart with nodemon)
-npm run dev
-
-# 4. Start in production mode
-npm start
 ```
-
-The server starts on **http://localhost:5000** by default.
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `5000` | Express server port |
-| `NODE_ENV` | `development` | `development` \| `production` \| `test` |
-| `MONGODB_URI` | `mongodb://127.0.0.1:27017/siem_soar` | MongoDB connection string |
-| `CORS_ORIGIN` | `http://localhost:4200` | Comma-separated allowed origins |
-| `THREAT_INTERVAL_MS` | `800` | Worker cadence in milliseconds |
-
----
-
-## REST API
-
-### Health check
-```
-GET /api/health
-```
-Returns server status, uptime, and timestamp.
-
-### List recent threats
-```
-GET /api/threats?limit=100&severity=High&type=DDoS
-```
-| Param | Type | Description |
-|---|---|---|
-| `limit` | number | 1–500, default `100` |
-| `severity` | string | `Low` \| `Medium` \| `High` \| `Critical` |
-| `type` | string | Any valid `attack_type` value |
-
-### Aggregated stats
-```
-GET /api/threats/stats
-```
-Returns total event count, grouped by `attack_type` and `severity`.
-
----
-
-## Socket.io Events
-
-### Server → Client
-
-| Event | Payload | Description |
-|---|---|---|
-| `live-threat` | `ThreatEvent` object | Emitted every ~800 ms with a new attack event |
-| `history` | `{ count, data[] }` | Last 50 events sent immediately on connection |
-| `filtered-threats` | `{ count, data[] }` | Response to a `filter-threats` request |
-| `threat-acknowledged` | `{ threatId, acknowledgedBy }` | Broadcast when an analyst acks a threat |
-
-### Client → Server
-
-| Event | Payload | Description |
-|---|---|---|
-| `filter-threats` | `{ severity?, attack_type? }` | Request filtered event set |
-| `acknowledge-threat` | `{ threatId }` | Mark a threat as reviewed |
-
----
-
-## Angular Integration Example
-
-```typescript
-import { io } from 'socket.io-client';
-
-const socket = io('http://localhost:5000', {
-  transports: ['websocket'],
-});
-
-// Receive initial history on connect
-socket.on('history', ({ data }) => {
-  this.threats = data;
-});
-
-// Stream live threats
-socket.on('live-threat', (threat) => {
-  this.threats.unshift(threat);
-});
-
-// Request filtered view
-socket.emit('filter-threats', { severity: 'Critical' });
-
-// Acknowledge a threat from the SOAR workflow
-socket.emit('acknowledge-threat', { threatId: '...' });
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                        server.js boots                          │
+  └───────────────┬───────────────┬────────────────┬───────────────┘
+                  │               │                │
+                  ▼               ▼                ▼
+         ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
+         │   Express    │  │  MongoDB     │  │  Socket.io       │
+         │   REST API   │  │  connects    │  │  Server starts   │
+         └──────────────┘  └──────────────┘  └──────────────────┘
+                                                       │
+                                                       ▼
+                                           ┌───────────────────────┐
+                                           │    Threat Worker      │
+                                           │   starts interval     │
+                                           │   (every 800ms)       │
+                                           └───────────┬───────────┘
+                                                       │
+                                                       ▼
+                                           ┌───────────────────────┐
+                                           │  threatGenerator.js   │
+                                           │  creates new event    │
+                                           └───────────┬───────────┘
+                                                       │
+                              ┌────────────────────────┤
+                              ▼                        ▼
+                   ┌─────────────────┐     ┌─────────────────────┐
+                   │  Save to        │     │  Emit via           │
+                   │  MongoDB        │     │  socket threat:new  │
+                   └─────────────────┘     └──────────┬──────────┘
+                                                       │
+                              ┌────────────────────────┼────────────────┐
+                              ▼                        ▼                ▼
+                   ┌─────────────────┐   ┌─────────────────┐  ┌──────────────┐
+                   │  Attack Map     │   │  Triage Queue   │  │  Stats Strip │
+                   │  draws line     │   │  new row        │  │  counter +1  │
+                   └─────────────────┘   └─────────────────┘  └──────────────┘
 ```
 
 ---
 
-## ThreatEvent Schema
+## 🌐 REST API Endpoints
 
-```js
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        REST API  /api/*                            │
+├────────────┬─────────────────────────┬──────────────────────────  │
+│  Method    │  Endpoint               │  Description               │
+├────────────┼─────────────────────────┼──────────────────────────  │
+│  GET       │  /api/health            │  Server health check       │
+│  GET       │  /api/threats           │  Latest threat events      │
+│  GET       │  /api/osint/:ip         │  OSINT data for an IP      │
+│  POST      │  /api/threats/:id/triage│  Triage action on threat   │
+│  POST      │  /api/playbooks/execute │  Run a SOAR playbook       │
+└────────────┴─────────────────────────┴──────────────────────────  ┘
+```
+
+### GET /api/health
+```json
 {
-  source_ip:      String,   // Attacker IP
-  target_ip:      String,   // Victim IP
-  source_country: String,   // Attacker's country
-  target_country: String,   // Victim's country
-  coordinates: {
-    lat:  Number,           // Source latitude  (±2° geo-jitter applied)
-    long: Number,           // Source longitude (±2° geo-jitter applied)
-  },
-  attack_type:    String,   // Enum — see below
-  severity:       String,   // Low | Medium | High | Critical
-  description:    String,   // Human-readable event summary
-  packet_count:   Number,   // Simulated packet volume
-  timestamp:      Date,
+  "status": "ok",
+  "service": "siem-soar-backend",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "uptime": 123.45
 }
 ```
 
-**Supported attack types:** SSH Brute Force, SQL Injection, DDoS, Port Scan, Malware, Phishing, Man-in-the-Middle, Zero-Day Exploit, Ransomware, DNS Spoofing
+### GET /api/threats
+```json
+[
+  {
+    "_id": "...",
+    "severity": "critical",
+    "attackType": "DDoS",
+    "sourceIP": "192.168.1.1",
+    "sourceCountry": "Russia",
+    "destinationIP": "10.0.0.1",
+    "destinationCountry": "United States",
+    "port": 443,
+    "protocol": "TCP",
+    "timestamp": "2024-01-01T00:00:00.000Z",
+    "triageStatus": "new"
+  }
+]
+```
 
 ---
 
-## Phase 2 Roadmap (Angular Frontend)
+## 🔌 Socket.io Events
 
-- [ ] 3D Globe (Three.js / CesiumJS) with animated attack arcs
-- [ ] Real-time threat feed table with filtering and sorting
-- [ ] Severity heatmap and attack-type pie charts (Chart.js / D3)
-- [ ] SOAR playbook trigger panel with automated response workflows
-- [ ] Analyst acknowledgement and case management UI
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                   SOCKET.IO EVENT BUS                            │
+│                                                                  │
+│   SERVER  ──────────────────────────────────────►  CLIENT       │
+│                                                                  │
+│   threat:new        ──►  new attack event object                │
+│   threat:updated    ──►  triage status changed                  │
+│   osint:result      ──►  IP enrichment data ready               │
+│   stats:update      ──►  severity counter snapshot              │
+│                                                                  │
+│   CLIENT  ──────────────────────────────────────►  SERVER       │
+│                                                                  │
+│   triage:action     ──►  { id, action }                         │
+│   osint:request     ──►  { ip }                                 │
+│   playbook:execute  ──►  { threatId, type }                     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔬 OSINT Enrichment Pipeline
+
+```
+  Client or Worker sends IP
+           │
+           ▼
+  ┌─────────────────────────┐
+  │  osint-enrichment       │
+  │  .service.js            │
+  └────────────┬────────────┘
+               │
+       ┌───────┴────────┐
+       ▼                ▼
+  ┌─────────┐      ┌──────────┐
+  │VirusTotal│      │  Shodan  │
+  │  API v3  │      │  API     │
+  └────┬─────┘      └────┬─────┘
+       │                 │
+       ▼                 ▼
+  VT Score          Open Ports
+  Detections        ISP / Country
+  Malicious?        CVEs found
+  Community votes   Hostnames
+       │                 │
+       └────────┬────────┘
+                ▼
+  ┌─────────────────────────┐
+  │  ThreatIntelligence     │
+  │  saved to MongoDB       │
+  └────────────┬────────────┘
+               │
+               ▼
+  socket emit  osint:result  ──► Angular OSINT Graph
+```
+
+---
+
+## 🗄️ Data Models
+
+### ThreatEvent Schema
+
+```
+ThreatEvent {
+  ┌─────────────────────┬────────────────────────────────────┐
+  │ Field               │ Type / Values                      │
+  ├─────────────────────┼────────────────────────────────────┤
+  │ id                  │ String (UUID)                      │
+  │ timestamp           │ Date                               │
+  │ severity            │ critical | high | medium | low     │
+  │ attackType          │ DDoS | SQLi | BruteForce | ...     │
+  │ sourceIP            │ String (IPv4)                      │
+  │ sourceCountry       │ String                             │
+  │ sourceLat/Lng       │ Number (coordinates)               │
+  │ destinationIP       │ String (IPv4)                      │
+  │ destinationCountry  │ String                             │
+  │ destLat/Lng         │ Number (coordinates)               │
+  │ protocol            │ TCP | UDP | ICMP | HTTP | HTTPS    │
+  │ port                │ Number                             │
+  │ triageStatus        │ new | acknowledged | escalated...  │
+  │ rawLog              │ String (simulated log line)        │
+  └─────────────────────┴────────────────────────────────────┘
+}
+```
+
+### ThreatIntelligence Schema
+
+```
+ThreatIntelligence {
+  ┌──────────────────┬─────────────────────────────────────┐
+  │ Field            │ Type / Values                       │
+  ├──────────────────┼─────────────────────────────────────┤
+  │ ip               │ String (IPv4)                       │
+  │ vtScore          │ Number (0–100 malicious score)      │
+  │ vtDetections     │ Number (engines that flagged it)    │
+  │ isMalicious      │ Boolean                             │
+  │ shodanPorts      │ Number[] (open ports)               │
+  │ isp              │ String                              │
+  │ country          │ String                              │
+  │ hostnames        │ String[]                            │
+  │ cves             │ String[] (CVE IDs)                  │
+  │ tags             │ String[] (e.g. "botnet", "scanner") │
+  │ lastSeen         │ Date                                │
+  └──────────────────┴─────────────────────────────────────┘
+}
+```
+
+---
+
+## 🛡️ Middleware Stack
+
+```
+Incoming Request
+      │
+      ▼
+  ┌─────────┐
+  │ Helmet  │  ← sets security headers (CSP, HSTS, etc.)
+  └────┬────┘
+       ▼
+  ┌─────────┐
+  │  CORS   │  ← only allows configured origins
+  └────┬────┘
+       ▼
+  ┌─────────────────┐
+  │  Body Parser    │  ← JSON, limit 10kb
+  └────┬────────────┘
+       ▼
+  ┌─────────┐
+  │ Morgan  │  ← HTTP request logger
+  └────┬────┘
+       ▼
+  ┌─────────────┐
+  │  Route      │  ← /api/health, /api/threats, etc.
+  │  Handlers   │
+  └─────────────┘
+```
+
+---
+
+## ⚙️ Environment Variables
+
+| Variable             | Required | Default                              | Description                    |
+|----------------------|----------|--------------------------------------|--------------------------------|
+| `PORT`               | ❌       | `5000`                               | Express server port            |
+| `NODE_ENV`           | ❌       | `development`                        | Environment mode               |
+| `MONGODB_URI`        | ✅       | —                                    | MongoDB connection string      |
+| `CORS_ORIGIN`        | ❌       | `http://localhost:4200`              | Allowed frontend origin        |
+| `THREAT_INTERVAL_MS` | ❌       | `800`                                | Threat generation interval     |
+| `VT_API_KEY`         | ✅       | —                                    | VirusTotal v3 API key          |
+| `SHODAN_API_KEY`     | ✅       | —                                    | Shodan API key                 |
+| `OSINT_MOCK`         | ❌       | `true`                               | Use mock OSINT (no real calls) |
+
+---
+
+## 🚀 Getting Started
+
+```bash
+cd siem-backend
+cp .env.example .env      # fill in your values
+npm install
+npm run dev               # starts on http://localhost:5000
+```
+
+### Scripts
+
+```
+npm start       → node src/server.js        (production)
+npm run dev     → nodemon src/server.js     (development, auto-restart)
+npm run lint    → eslint src/**/*.js        (code linting)
+```
+
+---
+
+## 📜 License
+
+MIT
