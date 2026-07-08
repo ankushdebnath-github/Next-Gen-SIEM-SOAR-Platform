@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy } from '@angular/core';
-import { Observable, Subject, share } from 'rxjs';
-import { io, Socket }         from 'socket.io-client';
+import { Observable, Subject }   from 'rxjs';
+import { io, Socket }            from 'socket.io-client';
 import {
   ThreatEvent, ThreatHistoryPayload, OsintResult, ThreatMitigatedEvent,
 } from '../models/threat-event.model';
@@ -8,22 +8,31 @@ import {
 /**
  * SocketService
  * ─────────────
- * Wraps the Socket.io client in RxJS Observables so Angular components can
- * subscribe declaratively without managing raw event listeners.
+ * Wraps the Socket.io client in RxJS Subjects so every subscriber shares the
+ * same underlying socket listener — no duplicate listeners, no new Observable
+ * allocation per subscription.
  *
  * Usage:
- *   socketService.onLiveThreat()  → Observable<ThreatEvent>
- *   socketService.onHistory()     → Observable<ThreatHistoryPayload>
- *   socketService.onOsintResult() → Observable<OsintResult>
- *   socketService.connected$      → Observable<boolean>
+ *   socketService.liveThreat$      → Observable<ThreatEvent>
+ *   socketService.history$         → Observable<ThreatHistoryPayload>
+ *   socketService.osintResult$     → Observable<OsintResult>
+ *   socketService.threatMitigated$ → Observable<ThreatMitigatedEvent>
+ *   socketService.connected$       → Observable<boolean>
+ *
+ * Legacy wrapper methods (onLiveThreat, onHistory, etc.) are kept for
+ * backwards compatibility with existing components.
  */
 @Injectable({ providedIn: 'root' })
 export class SocketService implements OnDestroy {
 
   private socket!: Socket;
 
-  /** Emits true when the socket connects, false when it disconnects. */
-  readonly connected$ = new Subject<boolean>();
+  // ── Shared hot Subjects — one listener per event type ─────────────────
+  readonly connected$       = new Subject<boolean>();
+  readonly liveThreat$      = new Subject<ThreatEvent>();
+  readonly history$         = new Subject<ThreatHistoryPayload>();
+  readonly osintResult$     = new Subject<OsintResult>();
+  readonly threatMitigated$ = new Subject<ThreatMitigatedEvent>();
 
   constructor() {
     this.connect();
@@ -32,10 +41,10 @@ export class SocketService implements OnDestroy {
   // ── Connection ─────────────────────────────────────────────────────────
 
   private connect(): void {
-    this.socket = io('/', {          // hits the proxy → localhost:5000
-      transports:       ['websocket', 'polling'],
-      reconnection:     true,
-      reconnectionDelay: 2000,
+    this.socket = io('/', {
+      transports:           ['websocket', 'polling'],
+      reconnection:         true,
+      reconnectionDelay:    2000,
       reconnectionAttempts: 10,
     });
 
@@ -52,72 +61,44 @@ export class SocketService implements OnDestroy {
     this.socket.on('connect_error', (err) => {
       console.error('[SocketService] Connection error:', err.message);
     });
+
+    // Register exactly ONE listener per event type — all subscribers share it
+    this.socket.on('live-threat',      (d: ThreatEvent)             => this.liveThreat$.next(d));
+    this.socket.on('history',          (d: ThreatHistoryPayload)     => this.history$.next(d));
+    this.socket.on('osint-result',     (d: OsintResult)              => this.osintResult$.next(d));
+    this.socket.on('threat-mitigated', (d: ThreatMitigatedEvent)     => this.threatMitigated$.next(d));
   }
 
-  // ── Event streams ──────────────────────────────────────────────────────
+  // ── Event streams (backwards-compatible wrappers) ──────────────────────
 
-  /**
-   * Stream of live attack events broadcast by the backend worker every 800 ms.
-   * Multicasted with share() so multiple component subscriptions don't open
-   * duplicate listeners on the underlying socket.
-   */
+  /** Stream of live attack events broadcast by the backend worker. */
   onLiveThreat(): Observable<ThreatEvent> {
-    return new Observable<ThreatEvent>((observer) => {
-      const handler = (data: ThreatEvent) => observer.next(data);
-      this.socket.on('live-threat', handler);
-      return () => this.socket.off('live-threat', handler);
-    }).pipe(share());
+    return this.liveThreat$.asObservable();
   }
 
-  /**
-   * Last 50 events sent by the server immediately after connecting.
-   * Completes after the first emission.
-   */
+  /** Last N events sent immediately after connecting. */
   onHistory(): Observable<ThreatHistoryPayload> {
-    return new Observable<ThreatHistoryPayload>((observer) => {
-      const handler = (data: ThreatHistoryPayload) => {
-        observer.next(data);
-        observer.complete();
-      };
-      this.socket.on('history', handler);
-      return () => this.socket.off('history', handler);
-    });
+    return this.history$.asObservable();
   }
 
-  /**
-   * OSINT enrichment results emitted when the backend finishes enriching a
-   * High or Critical severity IP address.
-   */
+  /** OSINT enrichment results. */
   onOsintResult(): Observable<OsintResult> {
-    return new Observable<OsintResult>((observer) => {
-      const handler = (data: OsintResult) => observer.next(data);
-      this.socket.on('osint-result', handler);
-      return () => this.socket.off('osint-result', handler);
-    }).pipe(share());
+    return this.osintResult$.asObservable();
+  }
+
+  /** Broadcast when a SOAR playbook mitigates one or more threats. */
+  onThreatMitigated(): Observable<ThreatMitigatedEvent> {
+    return this.threatMitigated$.asObservable();
   }
 
   // ── Outbound events ────────────────────────────────────────────────────
 
-  /** Ask the server for a filtered event set. */
   filterThreats(criteria: { severity?: string; attack_type?: string }): void {
     this.socket.emit('filter-threats', criteria);
   }
 
-  /** Mark a threat as acknowledged by an analyst. */
   acknowledgeThreat(threatId: string): void {
     this.socket.emit('acknowledge-threat', { threatId });
-  }
-
-  /**
-   * Stream of 'threat-mitigated' events broadcast by the SOAR Block-IP playbook.
-   * Payload: { ip, mitigated_ids[], mitigated_count, playbook, executed_at }
-   */
-  onThreatMitigated(): Observable<ThreatMitigatedEvent> {
-    return new Observable<ThreatMitigatedEvent>((observer) => {
-      const handler = (data: ThreatMitigatedEvent) => observer.next(data);
-      this.socket.on('threat-mitigated', handler);
-      return () => this.socket.off('threat-mitigated', handler);
-    }).pipe(share());
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -125,5 +106,9 @@ export class SocketService implements OnDestroy {
   ngOnDestroy(): void {
     this.socket.disconnect();
     this.connected$.complete();
+    this.liveThreat$.complete();
+    this.history$.complete();
+    this.osintResult$.complete();
+    this.threatMitigated$.complete();
   }
 }

@@ -29,8 +29,8 @@
   100% { box-shadow: 0 0 0 0   rgba(239,68,68,0);   }
 }
 .attack-map-title {
-  font-size: 10px; font-family: var(--font-mono);
-  letter-spacing: 0.16em; color: var(--accent-cyan);
+  font-size: 10px; font-family: var(--font-ui);
+  letter-spacing: 0.08em; color: var(--accent-cyan);
   font-weight: 700; text-transform: uppercase;
 }
 .attack-map-route {
@@ -103,10 +103,10 @@
 :host ::ng-deep .atk-popup .leaflet-popup-tip-container { display: none; }
 :host ::ng-deep .atk-popup .leaflet-popup-content { margin: 0; }
 :host ::ng-deep .atk-popup-inner {
-  padding: 12px 14px; font-family: monospace;
+  padding: 12px 14px; font-family: var(--font-ui);
 }
 :host ::ng-deep .atk-popup-title {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
   text-transform: uppercase; margin-bottom: 8px;
   padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08);
 }
@@ -118,7 +118,7 @@
 :host ::ng-deep .atk-popup-row b {
   color: rgba(200,220,240,0.45); font-weight: 400; min-width: 60px;
 }
-:host ::ng-deep .atk-popup-row span { color: #e2f0ff; }
+:host ::ng-deep .atk-popup-row span { color: #e2f0ff; font-family: var(--font-mono); }
 
 /* ── Leaflet overrides ───────────────────────────────────────────────────── */
 :host ::ng-deep .leaflet-control-zoom a {

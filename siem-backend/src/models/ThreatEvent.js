@@ -150,6 +150,10 @@ ThreatEventSchema.index({ severity: 1, timestamp: -1 });
 ThreatEventSchema.index({ source_country: 1, timestamp: -1 });
 // Support filtering by attack type in the events table
 ThreatEventSchema.index({ attack_type: 1, timestamp: -1 });
+// SOAR Block-IP playbook: updateMany({ source_ip, status:'Active' }) — critical for fast mitigation
+ThreatEventSchema.index({ source_ip: 1, status: 1 });
+// Socket history query: find({}).sort({timestamp:-1}).limit(50) — covered by this index
+ThreatEventSchema.index({ timestamp: -1 });
 
 // ── Instance helpers ──────────────────────────────────────────────────────
 /**

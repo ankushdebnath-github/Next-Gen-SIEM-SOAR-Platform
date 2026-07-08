@@ -16,6 +16,9 @@ interface StatsState {
   eventsPerMin:   number;
 }
 
+/** Recalc is expensive — only push to the DOM at most every 500 ms. */
+const RECALC_INTERVAL_MS = 500;
+
 @Component({
   selector:        'app-stats-strip',
   standalone:      true,
@@ -33,8 +36,13 @@ export class StatsStripComponent implements OnInit, OnDestroy {
 
   private attackTypeCounts = new Map<string, number>();
   private countryCounts    = new Map<string, number>();
+  /** Rolling 60-second window — store timestamps as a ring buffer. */
   private recentTimestamps: number[] = [];
   private sub = new Subscription();
+
+  /** Set to true when new events have arrived but recalc hasn't run yet. */
+  private dirty = false;
+  private recalcTimer!: ReturnType<typeof setInterval>;
 
   constructor(
     private socketService: SocketService,
@@ -42,9 +50,19 @@ export class StatsStripComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    // Periodic flush: only update the DOM when data has actually changed.
+    this.recalcTimer = setInterval(() => {
+      if (this.dirty) {
+        this.dirty = false;
+        this.recalc();
+        this.cdr.markForCheck();
+      }
+    }, RECALC_INTERVAL_MS);
+
     this.sub.add(
       this.socketService.onHistory().subscribe(({ data }) => {
         data.forEach(e => this.ingest(e));
+        this.dirty = false;
         this.recalc();
         this.cdr.markForCheck();
       })
@@ -53,8 +71,7 @@ export class StatsStripComponent implements OnInit, OnDestroy {
     this.sub.add(
       this.socketService.onLiveThreat().subscribe(e => {
         this.ingest(e);
-        this.recalc();
-        this.cdr.markForCheck();
+        this.dirty = true;   // defer DOM update to the recalc interval
       })
     );
 
@@ -74,22 +91,32 @@ export class StatsStripComponent implements OnInit, OnDestroy {
     this.attackTypeCounts.set(e.attack_type, (this.attackTypeCounts.get(e.attack_type) ?? 0) + 1);
     this.countryCounts.set(e.source_country, (this.countryCounts.get(e.source_country) ?? 0) + 1);
 
-    this.recentTimestamps.push(Date.now());
-    const cutoff = Date.now() - 60_000;
-    this.recentTimestamps = this.recentTimestamps.filter(t => t > cutoff);
+    const now    = Date.now();
+    const cutoff = now - 60_000;
+    this.recentTimestamps.push(now);
+    // Prune from the front only — avoids filter() allocation on every event
+    while (this.recentTimestamps.length > 0 && this.recentTimestamps[0] < cutoff) {
+      this.recentTimestamps.shift();
+    }
   }
 
   private recalc(): void {
-    // Top attack type
-    let maxAt = 0;
-    this.attackTypeCounts.forEach((v, k) => { if (v > maxAt) { maxAt = v; this.stats.topAttackType = k; } });
+    let maxAt = 0, maxC = 0;
+    let topType = this.stats.topAttackType, topCountry = this.stats.topCountry;
 
-    // Top source country
-    let maxC = 0;
-    this.countryCounts.forEach((v, k) => { if (v > maxC) { maxC = v; this.stats.topCountry = k; } });
+    this.attackTypeCounts.forEach((v, k) => { if (v > maxAt) { maxAt = v; topType = k; } });
+    this.countryCounts.forEach((v, k)    => { if (v > maxC)  { maxC  = v; topCountry = k; } });
 
-    this.stats.eventsPerMin = this.recentTimestamps.length;
+    this.stats = {
+      ...this.stats,
+      topAttackType: topType,
+      topCountry,
+      eventsPerMin: this.recentTimestamps.length,
+    };
   }
 
-  ngOnDestroy(): void { this.sub.unsubscribe(); }
+  ngOnDestroy(): void {
+    clearInterval(this.recalcTimer);
+    this.sub.unsubscribe();
+  }
 }

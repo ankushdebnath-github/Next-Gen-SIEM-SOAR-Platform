@@ -549,22 +549,42 @@ const io = new SocketIOServer(httpServer, {
   allowEIO3:          true,   // allow Socket.io v3 clients (Angular might use it)
 });
 
+// ── In-memory history cache ────────────────────────────────────────────────
+// Stores the most recent events in RAM so every new socket connection gets
+// the history instantly without a MongoDB round-trip.
+
+const HISTORY_CACHE_SIZE = 50;
+const historyCache = [];
+
+function pushHistoryCache(payload) {
+  historyCache.unshift(payload);
+  if (historyCache.length > HISTORY_CACHE_SIZE) historyCache.length = HISTORY_CACHE_SIZE;
+}
+
+// Expose for threatWorker
+module.exports._pushHistoryCache = pushHistoryCache;
+
 // ── Socket.io connection lifecycle ───────────────────────────────────────
 
 io.on('connection', (socket) => {
   const clientAddress = socket.handshake.address;
   console.log(`[Socket.io] Client connected    → id=${socket.id}  addr=${clientAddress}`);
 
-  // Send the last 50 events so the client has an immediate feed on connect
-  ThreatEvent
-    .find({})
-    .sort({ timestamp: -1 })
-    .limit(50)
-    .lean()
-    .then((recentEvents) => {
-      socket.emit('history', { count: recentEvents.length, data: recentEvents });
-    })
-    .catch((err) => console.error('[Socket.io] Failed to send history:', err.message));
+  // Serve from cache if available, otherwise query DB once and seed cache
+  if (historyCache.length > 0) {
+    socket.emit('history', { count: historyCache.length, data: [...historyCache] });
+  } else {
+    ThreatEvent
+      .find({})
+      .sort({ timestamp: -1 })
+      .limit(HISTORY_CACHE_SIZE)
+      .lean()
+      .then((recentEvents) => {
+        recentEvents.forEach((e) => historyCache.push(e));
+        socket.emit('history', { count: recentEvents.length, data: recentEvents });
+      })
+      .catch((err) => console.error('[Socket.io] Failed to send history:', err.message));
+  }
 
   // ── Inbound events from the Angular client ────────────────────────────
 

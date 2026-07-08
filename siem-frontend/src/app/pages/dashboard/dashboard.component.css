@@ -45,17 +45,17 @@
   background:    rgba(0,212,255,0.05);
 }
 .nav-name {
-  font-family:    var(--font-mono);
+  font-family:    var(--font-ui);
   font-size:      15px;
   font-weight:    700;
-  letter-spacing: 0.25em;
+  letter-spacing: 0.1em;
   color:          var(--text-primary);
 }
 .nav-subtitle {
   font-size:      9px;
   color:          var(--text-muted);
-  font-family:    var(--font-mono);
-  letter-spacing: 0.12em;
+  font-family:    var(--font-ui);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .nav-right {
@@ -70,9 +70,9 @@
   padding:       5px 14px;
   border-radius: var(--radius-sm);
   font-size:     11px;
-  font-family:   var(--font-mono);
-  font-weight:   700;
-  letter-spacing: 0.06em;
+  font-family:   var(--font-ui);
+  font-weight:   600;
+  letter-spacing: 0.03em;
   border:        1px solid;
   transition:    all 0.3s ease;
 }
@@ -102,5 +102,20 @@
   overflow:       hidden;
   min-height:     0;
 }
-.main-content app-live-map     { flex-shrink: 0; height: 340px; }
-.main-content app-triage-queue { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* Map takes 65% of available height, queue takes 35% */
+.main-content app-live-map {
+  flex:           0 0 65%;
+  min-height:     0;
+  width:          100%;
+  overflow:       hidden;
+  display:        flex;
+  flex-direction: column;
+}
+.main-content app-triage-queue {
+  flex:           0 0 calc(35% - 10px);
+  min-height:     0;
+  width:          100%;
+  overflow:       hidden;
+  display:        flex;
+  flex-direction: column;
+}

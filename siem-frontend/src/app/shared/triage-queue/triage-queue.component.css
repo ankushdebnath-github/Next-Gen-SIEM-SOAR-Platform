@@ -11,24 +11,24 @@
 }
 .queue-title { display: flex; align-items: center; gap: 8px; }
 .queue-title h2 {
-  font-size: 13px; font-family: var(--font-mono);
-  letter-spacing: .15em; color: var(--text-primary); font-weight: 700;
+  font-size: 13px; font-family: var(--font-ui);
+  letter-spacing: .05em; color: var(--text-primary); font-weight: 700;
 }
 .queue-title .icon { font-size: 14px; }
 .row-count {
-  font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);
+  font-size: 11px; font-family: var(--font-ui); color: var(--text-muted);
   padding: 1px 6px; background: var(--bg-primary);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
 .click-hint {
-  font-size: 10px; color: var(--accent-cyan); font-family: var(--font-mono);
+  font-size: 10px; color: var(--accent-cyan); font-family: var(--font-ui);
   opacity: .7; font-style: italic;
 }
 .filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
   display: flex; align-items: center; gap: 5px; padding: 3px 10px;
-  font-size: 10px; font-family: var(--font-mono); font-weight: 700;
-  letter-spacing: .06em; border-radius: 3px; border: 1px solid var(--border);
+  font-size: 10px; font-family: var(--font-ui); font-weight: 600;
+  letter-spacing: .03em; border-radius: 3px; border: 1px solid var(--border);
   background: var(--bg-card); color: var(--text-secondary); cursor: pointer;
   transition: all .15s ease;
 }
@@ -50,12 +50,12 @@
   position: sticky; top: 0; z-index: 2; background: var(--bg-secondary);
 }
 .threat-table th {
-  padding: 7px 12px; text-align: left; font-family: var(--font-mono);
-  font-size: 10px; letter-spacing: .1em; color: var(--text-muted);
+  padding: 7px 12px; text-align: left; font-family: var(--font-ui);
+  font-size: 10px; letter-spacing: .06em; color: var(--text-muted);
   border-bottom: 1px solid var(--border); white-space: nowrap; font-weight: 600;
 }
 .threat-table td {
-  padding: 6px 12px; border-bottom: 1px solid rgba(26,58,92,.4);
+  padding: 10px 12px; border-bottom: 1px solid rgba(26,58,92,.4);
   white-space: nowrap; vertical-align: middle;
 }
 .threat-table tbody tr {
@@ -92,7 +92,7 @@
   justify-content: center; padding: 40px; gap: 10px; color: var(--text-muted);
 }
 .empty-state .empty-icon { font-size: 28px; }
-.empty-state p { font-family: var(--font-mono); font-size: 12px; }
+.empty-state p { font-family: var(--font-ui); font-size: 12px; }
 
 @keyframes rowPulse {
   0%   { background: rgba(0,212,255,.12); }

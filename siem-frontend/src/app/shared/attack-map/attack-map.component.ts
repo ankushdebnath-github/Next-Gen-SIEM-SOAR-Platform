@@ -11,6 +11,33 @@ import { severityColor, severityWeight, severityGlow } from '../../utils/severit
 
 const ARC_SEGMENTS = 80;
 
+/**
+ * Country centroid lookup table — identical to the backend and live-map.
+ * Ensures arcs draw to the correct country locations.
+ */
+const COUNTRY_CENTROIDS: Record<string, { lat: number; long: number }> = {
+  'China':          { lat:  35.8617,  long: 104.1954 },
+  'Russia':         { lat:  61.5240,  long: 105.3188 },
+  'United States':  { lat:  37.0902,  long:  -95.7129 },
+  'Brazil':         { lat: -14.2350,  long:  -51.9253 },
+  'Germany':        { lat:  51.1657,  long:   10.4515 },
+  'India':          { lat:  20.5937,  long:   78.9629 },
+  'North Korea':    { lat:  40.3399,  long:  127.5101 },
+  'Iran':           { lat:  32.4279,  long:   53.6880 },
+  'United Kingdom': { lat:  55.3781,  long:   -3.4360 },
+  'France':         { lat:  46.2276,  long:    2.2137 },
+  'Japan':          { lat:  36.2048,  long:  138.2529 },
+  'Australia':      { lat: -25.2744,  long:  133.7751 },
+  'Canada':         { lat:  56.1304,  long:  -106.3468 },
+  'South Korea':    { lat:  35.9078,  long:  127.7669 },
+  'Netherlands':    { lat:  52.1326,  long:    5.2913 },
+  'Ukraine':        { lat:  48.3794,  long:   31.1656 },
+  'Nigeria':        { lat:   9.0820,  long:    8.6753 },
+  'Pakistan':       { lat:  30.3753,  long:   69.3451 },
+  'Turkey':         { lat:  38.9637,  long:   35.2433 },
+  'Mexico':         { lat:  23.6345,  long: -102.5528 },
+};
+
 @Component({
   selector:        'app-attack-map',
   standalone:      true,
@@ -64,7 +91,7 @@ export class AttackMapComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      { subdomains: 'abcd', maxZoom: 19 }
+      { subdomains: 'abcd', maxZoom: 19, noWrap: false }
     ).addTo(this.map);
 
     this.arcLayer = L.layerGroup().addTo(this.map);
@@ -236,6 +263,15 @@ export class AttackMapComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   private deriveTargetCoords(evt: ThreatEvent): { lat: number; long: number } {
+    const centroid = COUNTRY_CENTROIDS[evt.target_country];
+    if (centroid) {
+      const jitterLat  = (Math.random() - 0.5) * 2;
+      const jitterLong = (Math.random() - 0.5) * 2;
+      return {
+        lat:  Math.max(-85, Math.min(85, centroid.lat + jitterLat)),
+        long: Math.max(-180, Math.min(180, centroid.long + jitterLong)),
+      };
+    }
     const hash = evt.target_ip.split('.').reduce(
       (acc, oct, i) => acc + parseInt(oct, 10) * (i + 1) * 17, 0
     );

@@ -40,6 +40,34 @@ const ARC_SEGMENTS = 80;
 const SPARK_BUCKET_MS  = 5_000;
 const SPARK_MAX_BUCKETS = 60;
 
+/**
+ * Country name → centroid lookup table.
+ * Must match the backend COUNTRIES table exactly so arcs draw to correct
+ * geographic locations. Fixes the "wrong country path" bug.
+ */
+const COUNTRY_CENTROIDS: Record<string, { lat: number; long: number }> = {
+  'China':          { lat:  35.8617,  long: 104.1954 },
+  'Russia':         { lat:  61.5240,  long: 105.3188 },
+  'United States':  { lat:  37.0902,  long:  -95.7129 },
+  'Brazil':         { lat: -14.2350,  long:  -51.9253 },
+  'Germany':        { lat:  51.1657,  long:   10.4515 },
+  'India':          { lat:  20.5937,  long:   78.9629 },
+  'North Korea':    { lat:  40.3399,  long:  127.5101 },
+  'Iran':           { lat:  32.4279,  long:   53.6880 },
+  'United Kingdom': { lat:  55.3781,  long:   -3.4360 },
+  'France':         { lat:  46.2276,  long:    2.2137 },
+  'Japan':          { lat:  36.2048,  long:  138.2529 },
+  'Australia':      { lat: -25.2744,  long:  133.7751 },
+  'Canada':         { lat:  56.1304,  long:  -106.3468 },
+  'South Korea':    { lat:  35.9078,  long:  127.7669 },
+  'Netherlands':    { lat:  52.1326,  long:    5.2913 },
+  'Ukraine':        { lat:  48.3794,  long:   31.1656 },
+  'Nigeria':        { lat:   9.0820,  long:    8.6753 },
+  'Pakistan':       { lat:  30.3753,  long:   69.3451 },
+  'Turkey':         { lat:  38.9637,  long:   35.2433 },
+  'Mexico':         { lat:  23.6345,  long: -102.5528 },
+};
+
 @Component({
   selector:        'app-live-map',
   standalone:      true,
@@ -86,6 +114,17 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
 
   private eventCount   = 0;
   private statsTimer!: ReturnType<typeof setInterval>;
+
+  /** Pending CD update from drawArc — batched so zone.run fires at most once per rAF. */
+  private cdPending = false;
+
+  /** All arcs currently fading out — stepped by the single shared rAF loop. */
+  private fadingArcs = new Map<string, {
+    glow: L.Polyline; arc: L.Polyline; dot: L.CircleMarker;
+    arcId: string; opacity: number;
+  }>();
+  /** Single shared rAF handle for the fade loop — null when nothing is fading. */
+  private fadeRafHandle: number | null = null;
 
   constructor(
     private socketService: SocketService,
@@ -217,10 +256,13 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
       worldCopyJump:   true,
     });
 
-    // Dark tile layer from CartoDB
+    // Dark tile layer — uses dark_all which shows continent outlines clearly.
+    // noWrap: false is intentional (allows panning past antimeridian).
+    // The horizontal red/pink line seen before was from SVG renderer stroke
+    // artifacts; using Canvas renderer + renderer option fixes it.
     L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      { subdomains: 'abcd', maxZoom: 19 }
+      { subdomains: 'abcd', maxZoom: 19, noWrap: false }
     ).addTo(this.map);
 
     // Dedicated layer group for arcs so we can clear them independently
@@ -251,9 +293,9 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
   /**
    * Draws a curved arc from source → target on the Leaflet map.
    *
-   * Arc shape: We interpolate ARC_SEGMENTS points along a great-circle path
-   * and raise the midpoint by a "bulge" offset so the line curves above the
-   * straight chord — this gives the classic attack-arc look.
+   * Arc shape: We interpolate ARC_SEGMENTS points along a great-circle path.
+   * Leaflet handles geodesic rendering correctly, so we don't need to manually
+   * split at the antimeridian or add artificial bulge.
    *
    * Two polylines are drawn for each arc:
    *   1. A thick, low-opacity "glow" line for the bloom effect.
@@ -263,9 +305,6 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
    */
   private drawArc(event: ThreatEvent): void {
     const src = event.coordinates;
-    // Target country centroid: derive from a lookup table. For arcs we simply
-    // use the target_ip hash to scatter the endpoint plausibly. In a real app
-    // you'd supply target_coordinates from the backend.
     const tgt = this.deriveTargetCoords(event);
 
     if (!src || !tgt) return;
@@ -325,18 +364,24 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
 
     // Schedule fade + removal after TTL
     const timer = setTimeout(() => {
-      // Fade out over 600 ms then remove
       this.fadeAndRemove(glowLine, arcLine, dot, arcId);
     }, ARC_TTL_MS - 600);
 
     this.activeArcs.set(arcId, { arc: arcLine, glow: glowLine, timer, sourceIp: event.source_ip });
-    this.ngZone.run(() => {
-      this.totalArcs = this.activeArcs.size;
-      // If this new arc belongs to the selected IP, refresh sparkline count
-      if (this.selectedIp === event.source_ip) {
-        this.updateSparklinePanel();
-      }
-    });
+
+    // Batch Angular CD updates — only enter the zone once per rAF frame
+    if (!this.cdPending) {
+      this.cdPending = true;
+      requestAnimationFrame(() => {
+        this.cdPending = false;
+        this.ngZone.run(() => {
+          this.totalArcs = this.activeArcs.size;
+          if (this.selectedIp === event.source_ip) {
+            this.updateSparklinePanel();
+          }
+        });
+      });
+    }
   }
 
   /**
@@ -370,22 +415,54 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
   private fadeAndRemove(
     glow: L.Polyline, arc: L.Polyline, dot: L.CircleMarker, arcId: string
   ): void {
-    let opacity = 1.0;
-    const step  = () => {
-      opacity -= 0.12;
-      if (opacity <= 0) {
-        [glow, arc, dot].forEach((l) => this.arcLayer.removeLayer(l));
-        this.activeArcs.delete(arcId);
-        this.ngZone.run(() => { this.totalArcs = this.activeArcs.size; });
-        return;
-      }
-      arc.setStyle({ opacity });
-      glow.setStyle({ opacity: opacity * 0.6 });
-      dot.setStyle({ fillOpacity: opacity, opacity });
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+    this.fadingArcs.set(arcId, { glow, arc, dot, arcId, opacity: 1.0 });
+    if (this.fadeRafHandle === null) {
+      this.fadeRafHandle = requestAnimationFrame(this._sharedFadeLoop);
+    }
   }
+
+  /**
+   * Single rAF loop that steps ALL fading arcs forward in one pass per frame.
+   * Replaces the previous pattern of one rAF chain per arc (up to 120 chains).
+   */
+  private _sharedFadeLoop = (): void => {
+    if (this.fadingArcs.size === 0) {
+      this.fadeRafHandle = null;
+      return;
+    }
+
+    this.fadingArcs.forEach((entry, id) => {
+      entry.opacity -= 0.12;
+      if (entry.opacity <= 0) {
+        // Fully faded — remove from map
+        [entry.glow, entry.arc, entry.dot].forEach((l) => {
+          try { this.arcLayer.removeLayer(l); } catch (_) {}
+        });
+        this.activeArcs.delete(id);
+        this.fadingArcs.delete(id);
+      } else {
+        entry.arc.setStyle({ opacity: entry.opacity });
+        entry.glow.setStyle({ opacity: entry.opacity * 0.6 });
+        entry.dot.setStyle({ fillOpacity: entry.opacity, opacity: entry.opacity });
+      }
+    });
+
+    // If any arcs were removed, update the zone counter (batched)
+    if (!this.cdPending) {
+      this.cdPending = true;
+      requestAnimationFrame(() => {
+        this.cdPending = false;
+        this.ngZone.run(() => { this.totalArcs = this.activeArcs.size; });
+      });
+    }
+
+    // Continue the loop only if there are still fading arcs
+    if (this.fadingArcs.size > 0) {
+      this.fadeRafHandle = requestAnimationFrame(this._sharedFadeLoop);
+    } else {
+      this.fadeRafHandle = null;
+    }
+  };
 
   /** Immediately remove an arc and cancel its timer (force eviction). */
   private removeArc(arcId: string): void {
@@ -401,7 +478,7 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
 
   /**
    * Returns an array of LatLng points forming a great-circle arc between
-   * two geographic coordinates.  A vertical "bulge" is applied at the
+   * two geographic coordinates. A small vertical "bulge" is applied at the
    * midpoint to give the arc a curved appearance on the Mercator projection.
    *
    * @param from  [lat, lng]
@@ -425,8 +502,8 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
       )
     );
 
-    // Bulge factor — larger for longer arcs
-    const bulge = Math.min(d * 0.5, 0.8);
+    // Bulge factor — much smaller now, max 10° regardless of distance
+    const bulge = Math.min(d * 0.15, 0.175); // radians, ~10° max
 
     for (let i = 0; i <= ARC_SEGMENTS; i++) {
       const f = i / ARC_SEGMENTS;
@@ -447,12 +524,21 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
       const y = A * Math.cos(lat1) * Math.sin(lng1) + B * Math.cos(lat2) * Math.sin(lng2);
       const z = A * Math.sin(lat1)                  + B * Math.sin(lat2);
 
-      let lat = (Math.atan2(z, Math.sqrt(x * x + y * y)) * 180) / Math.PI;
-      const lng = (Math.atan2(y, x) * 180) / Math.PI;
+      let lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+      let lng = Math.atan2(y, x);
 
       // Apply bulge: lift midpoint latitude to create the arc curve
-      const bulgeOffset = bulge * Math.sin(f * Math.PI) * (180 / Math.PI);
+      // Use radians throughout to keep the math consistent
+      const bulgeOffset = bulge * Math.sin(f * Math.PI);
       lat += bulgeOffset;
+
+      // Clamp to valid lat/lng ranges and convert to degrees
+      lat = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, lat)) * (180 / Math.PI);
+      lng = lng * (180 / Math.PI);
+
+      // Normalize longitude to -180...180
+      while (lng > 180)  lng -= 360;
+      while (lng < -180) lng += 360;
 
       points.push([lat, lng]);
     }
@@ -461,18 +547,28 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
   }
 
   /**
-   * Derives a plausible target coordinate from the ThreatEvent.
-   * In a full implementation the backend would supply target_coordinates;
-   * here we use a stable hash of target_ip to scatter the endpoint.
+   * Derives a target coordinate from the ThreatEvent's target_country field.
+   * Looks up the centroid from the COUNTRY_CENTROIDS table. If the country
+   * is not found, falls back to a hash-based scatter (for unknown countries).
    */
   private deriveTargetCoords(event: ThreatEvent): { lat: number; long: number } {
-    // Quick hash of target_ip to get a deterministic but scattered position
+    const centroid = COUNTRY_CENTROIDS[event.target_country];
+    if (centroid) {
+      // Add slight jitter (±1°) so multiple attacks to the same country don't stack
+      const jitterLat  = (Math.random() - 0.5) * 2;
+      const jitterLong = (Math.random() - 0.5) * 2;
+      return {
+        lat:  Math.max(-85, Math.min(85, centroid.lat + jitterLat)),
+        long: Math.max(-180, Math.min(180, centroid.long + jitterLong)),
+      };
+    }
+    // Fallback: hash of target_ip (for countries not in the lookup table)
     const hash = event.target_ip.split('.').reduce(
       (acc, octet, i) => acc + parseInt(octet, 10) * (i + 1) * 17, 0
     );
     return {
-      lat:  ((hash * 7  % 170) - 85),    // –85 … 85
-      long: ((hash * 13 % 360) - 180),   // –180 … 180
+      lat:  ((hash * 7  % 170) - 85),
+      long: ((hash * 13 % 360) - 180),
     };
   }
 
@@ -494,6 +590,10 @@ export class LiveMapComponent implements OnInit, AfterViewInit, OnChanges, OnDes
     this.subscription.unsubscribe();
     clearInterval(this.statsTimer);
     this.activeArcs.forEach((_, id) => this.removeArc(id));
+    if (this.fadeRafHandle !== null) {
+      cancelAnimationFrame(this.fadeRafHandle);
+      this.fadeRafHandle = null;
+    }
     if (this.map) this.map.remove();
   }
 }

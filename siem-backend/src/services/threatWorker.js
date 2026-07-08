@@ -20,12 +20,29 @@
 const ThreatEvent             = require('../models/ThreatEvent');
 const { generateThreatEvent } = require('./threatGenerator');
 
+// Lazily resolved to avoid circular-require at module load time.
+// server.js exports _pushHistoryCache after it registers it.
+let _pushHistoryCache = null;
+function getPushHistoryCache() {
+  if (!_pushHistoryCache) {
+    try { _pushHistoryCache = require('../server')._pushHistoryCache; } catch (_) {}
+  }
+  return _pushHistoryCache;
+}
+
 // ── Configuration ─────────────────────────────────────────────────────────
 
-const WORKER_INTERVAL_MS = parseInt(process.env.THREAT_INTERVAL_MS || '800', 10);
+// Default raised from 800ms to 1200ms to reduce DB + socket pressure.
+// Override with THREAT_INTERVAL_MS env variable if needed.
+const WORKER_INTERVAL_MS = parseInt(process.env.THREAT_INTERVAL_MS || '1200', 10);
 
 // Tracks the setInterval handle so the caller can stop the worker cleanly.
 let workerHandle = null;
+
+// Guard flag: prevents a slow DB write from stacking up concurrent ticks.
+// If a tick is still awaiting event.save() when the next interval fires,
+// the new tick is skipped instead of spawning a parallel DB operation.
+let tickBusy = false;
 
 // ── Worker ────────────────────────────────────────────────────────────────
 
@@ -44,6 +61,14 @@ function startThreatWorker(io) {
   console.log(`[Worker] Starting threat generator (interval: ${WORKER_INTERVAL_MS} ms)…`);
 
   workerHandle = setInterval(async () => {
+    // Skip this tick if the previous DB write is still in flight.
+    // This prevents event-loop pile-up under heavy MongoDB latency.
+    if (tickBusy) {
+      console.warn('[Worker] Previous tick still running — skipping this interval.');
+      return;
+    }
+
+    tickBusy = true;
     try {
       // ── Step 1: Generate ──────────────────────────────────────────────
       const rawPayload = generateThreatEvent();
@@ -56,6 +81,10 @@ function startThreatWorker(io) {
       const socketPayload = event.toSocketPayload();
       io.emit('live-threat', socketPayload);
 
+      // ── Step 4: Push to history cache ─────────────────────────────────
+      const pushCache = getPushHistoryCache();
+      if (pushCache) pushCache(socketPayload);
+
       if (process.env.NODE_ENV !== 'production') {
         console.log(
           `[Worker] ⚡ [${socketPayload.severity.padEnd(8)}] ${socketPayload.attack_type.padEnd(22)} ` +
@@ -67,6 +96,8 @@ function startThreatWorker(io) {
       // Log the error but do NOT kill the interval — a transient DB hiccup
       // should not halt the entire streaming pipeline.
       console.error('[Worker] Error on threat tick:', err.message);
+    } finally {
+      tickBusy = false;
     }
   }, WORKER_INTERVAL_MS);
 

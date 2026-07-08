@@ -30,10 +30,17 @@ export class TriageQueueComponent implements OnInit, OnDestroy {
   /** IP → risk_level cache from OSINT results */
   ipReputations = new Map<string, string>();
 
+  /** Cached filtered list — recomputed only when activeFilter changes. */
+  private _filteredCache: ThreatEvent[] = [];
+  private _lastFilter = '';
+
   @Output() rowClick = new EventEmitter<ThreatEvent>();
 
   readonly severityBadgeClass = severityBadgeClass;
   readonly trackById: TrackByFunction<ThreatEvent> = (_, item) => item.id;
+
+  // Pre-allocated row class map for each row to avoid creating new objects
+  private rowClassCache = new Map<string, Record<string, boolean>>();
 
   private sub = new Subscription();
 
@@ -78,9 +85,12 @@ export class TriageQueueComponent implements OnInit, OnDestroy {
 
         this.threats = this.threats.filter((t) => {
           const isTargeted = t.source_ip === evt.ip || idSet.has(String(t.id));
-          if (isTargeted && t.severity in this.counts) {
-            (this.counts as Record<string, number>)[t.severity]--;
-            this.counts.Total--;
+          if (isTargeted) {
+            if (t.severity in this.counts) {
+              (this.counts as Record<string, number>)[t.severity]--;
+              this.counts.Total--;
+            }
+            this.rowClassCache.delete(t.id);  // Clear stale cache
           }
           return !isTargeted;
         });
@@ -88,10 +98,10 @@ export class TriageQueueComponent implements OnInit, OnDestroy {
         const removed = before - this.threats.length;
         if (removed > 0) {
           console.log(`[TriageQueue] Removed ${removed} mitigated row(s) for IP ${evt.ip}`);
-          // Clear selection if the selected row was just removed
           if (this.selectedId && idSet.has(this.selectedId)) {
             this.selectedId = null;
           }
+          this._refreshFilter();
           this.cdr.markForCheck();
         }
       })
@@ -113,6 +123,7 @@ export class TriageQueueComponent implements OnInit, OnDestroy {
           (this.counts as Record<string, number>)[r.severity]--;
           this.counts.Total--;
         }
+        this.rowClassCache.delete(r.id);  // Clear stale row class cache
       });
     }
     if (animate && evt.id) {
@@ -122,6 +133,7 @@ export class TriageQueueComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       }, NEW_ROW_CLASS_MS);
     }
+    this._refreshFilter();  // Rebuild filter cache
   }
 
   // ── Selection ──────────────────────────────────────────────────────────
@@ -136,21 +148,32 @@ export class TriageQueueComponent implements OnInit, OnDestroy {
 
   setFilter(s: string): void {
     this.activeFilter = this.activeFilter === s ? '' : s;
+    this._refreshFilter();
     this.cdr.markForCheck();
   }
 
+  /** Returns the cached filtered list — O(1) during CD cycles. */
   get filteredThreats(): ThreatEvent[] {
-    return this.activeFilter
+    return this._filteredCache;
+  }
+
+  /** Rebuild the filtered cache. Call whenever threats[] or activeFilter changes. */
+  private _refreshFilter(): void {
+    this._filteredCache = this.activeFilter
       ? this.threats.filter((t) => t.severity === this.activeFilter)
       : this.threats;
   }
 
   rowClass(evt: ThreatEvent): Record<string, boolean> {
-    return {
-      'row-new':      this.newRowIds.has(evt.id),
-      'row-selected': this.selectedId === evt.id,
-      [`row-${evt.severity.toLowerCase()}`]: true,
-    };
+    // Build once per row; invalidate when newRowIds or selectedId changes
+    let cls = this.rowClassCache.get(evt.id);
+    if (!cls) {
+      cls = { [`row-${evt.severity.toLowerCase()}`]: true, 'row-new': false, 'row-selected': false };
+      this.rowClassCache.set(evt.id, cls);
+    }
+    cls['row-new']      = this.newRowIds.has(evt.id);
+    cls['row-selected'] = this.selectedId === evt.id;
+    return cls;
   }
 
   getCount(sev: string): number {
