@@ -1,0 +1,100 @@
+<div class="playbooks-panel">
+
+  <!-- ── Header ──────────────────────────────────────────────────────── -->
+  <div class="panel-header">
+    <span class="panel-icon">⚡</span>
+    <span class="panel-title">EXECUTION PLAYBOOKS</span>
+    <span class="panel-ip">{{ ip }}</span>
+  </div>
+
+  <!-- ── Mitigated banner ─────────────────────────────────────────────── -->
+  <div class="mitigated-banner" *ngIf="isMitigated">
+    <span>🔒</span>
+    <span>IP BLOCKED &amp; QUARANTINED</span>
+  </div>
+
+  <!-- ── Playbook cards ───────────────────────────────────────────────── -->
+  <div class="playbook-list">
+
+    <!-- Block IP Playbook -->
+    <div class="playbook-card" [class.mitigated]="isMitigated">
+      <div class="playbook-info">
+        <div class="playbook-name">
+          <span class="playbook-icon">🔒</span>
+          Quarantine Asset / Block IP
+        </div>
+        <p class="playbook-desc">
+          Bulk-updates all Active threat events from this source IP to
+          <strong>Mitigated</strong> in MongoDB and notifies all connected
+          analysts in real time via Socket.io.
+        </p>
+        <div class="playbook-meta">
+          <span class="meta-tag">SOAR</span>
+          <span class="meta-tag">Network</span>
+          <span class="meta-tag">Automated</span>
+        </div>
+      </div>
+
+      <button
+        class="execute-btn"
+        [class.executing]="blocking$ | async"
+        [class.done]="isMitigated"
+        [disabled]="(blocking$ | async) || isMitigated"
+        (click)="executeBlockIp()">
+
+        <span *ngIf="!(blocking$ | async) && !isMitigated">
+          ▶ &nbsp;Execute
+        </span>
+        <span *ngIf="blocking$ | async" class="btn-spinner">
+          <span class="spin-ring"></span> Running…
+        </span>
+        <span *ngIf="isMitigated">
+          ✔ &nbsp;Mitigated
+        </span>
+      </button>
+    </div>
+
+    <!-- Placeholder future playbooks (greyed out) -->
+    <div class="playbook-card disabled">
+      <div class="playbook-info">
+        <div class="playbook-name">
+          <span class="playbook-icon">📧</span>
+          Notify SOC Team
+        </div>
+        <p class="playbook-desc">Send an automated incident report to the on-call SOC analyst.</p>
+        <div class="playbook-meta"><span class="meta-tag">Notification</span></div>
+      </div>
+      <button class="execute-btn" disabled>Coming Soon</button>
+    </div>
+
+    <div class="playbook-card disabled">
+      <div class="playbook-info">
+        <div class="playbook-name">
+          <span class="playbook-icon">🔁</span>
+          Isolate Endpoint
+        </div>
+        <p class="playbook-desc">Trigger EDR isolation on the target host via API integration.</p>
+        <div class="playbook-meta"><span class="meta-tag">Endpoint</span></div>
+      </div>
+      <button class="execute-btn" disabled>Coming Soon</button>
+    </div>
+
+  </div>
+
+  <!-- ── Error alert ──────────────────────────────────────────────────── -->
+  <div class="error-alert" *ngIf="error$ | async as err">
+    <span>⚠</span> {{ err }}
+  </div>
+
+  <!-- ── Execution log ────────────────────────────────────────────────── -->
+  <div class="exec-log" *ngIf="log.length">
+    <div class="log-header">EXECUTION LOG</div>
+    <div class="log-body">
+      <div *ngFor="let entry of log" class="log-entry" [class]="'log-' + entry.type">
+        <span class="log-time">{{ entry.time }}</span>
+        <span class="log-msg">{{ entry.message }}</span>
+      </div>
+    </div>
+  </div>
+
+</div>

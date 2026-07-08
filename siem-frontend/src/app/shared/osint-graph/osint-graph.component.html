@@ -1,0 +1,7 @@
+<div class="graph-container">
+  <svg #svgContainer class="graph-svg"></svg>
+  <div class="graph-empty" *ngIf="!graph?.nodes?.length">
+    <span>⬡</span>
+    <p>Graph loading…</p>
+  </div>
+</div>

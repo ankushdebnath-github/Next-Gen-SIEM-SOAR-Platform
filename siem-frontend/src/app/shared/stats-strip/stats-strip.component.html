@@ -1,0 +1,71 @@
+<div class="stats-strip">
+
+  <div class="stat-card">
+    <div class="stat-icon">📊</div>
+    <div class="stat-body">
+      <div class="stat-value">{{ stats.total | number }}</div>
+      <div class="stat-label">TOTAL EVENTS</div>
+    </div>
+  </div>
+
+  <div class="stat-divider"></div>
+
+  <div class="stat-card stat-critical">
+    <div class="stat-icon">🔴</div>
+    <div class="stat-body">
+      <div class="stat-value critical">{{ stats.critical | number }}</div>
+      <div class="stat-label">CRITICAL</div>
+    </div>
+  </div>
+
+  <div class="stat-divider"></div>
+
+  <div class="stat-card stat-high">
+    <div class="stat-icon">🟠</div>
+    <div class="stat-body">
+      <div class="stat-value high">{{ stats.high | number }}</div>
+      <div class="stat-label">HIGH</div>
+    </div>
+  </div>
+
+  <div class="stat-divider"></div>
+
+  <div class="stat-card stat-blocked">
+    <div class="stat-icon">🔒</div>
+    <div class="stat-body">
+      <div class="stat-value blocked">{{ stats.blocked | number }}</div>
+      <div class="stat-label">BLOCKED</div>
+    </div>
+  </div>
+
+  <div class="stat-divider"></div>
+
+  <div class="stat-card stat-wide">
+    <div class="stat-icon">⚡</div>
+    <div class="stat-body">
+      <div class="stat-value cyan">{{ stats.topAttackType }}</div>
+      <div class="stat-label">TOP ATTACK TYPE</div>
+    </div>
+  </div>
+
+  <div class="stat-divider"></div>
+
+  <div class="stat-card stat-wide">
+    <div class="stat-icon">🌍</div>
+    <div class="stat-body">
+      <div class="stat-value cyan">{{ stats.topCountry }}</div>
+      <div class="stat-label">TOP SOURCE</div>
+    </div>
+  </div>
+
+  <div class="stat-divider"></div>
+
+  <div class="stat-card">
+    <div class="stat-icon">📈</div>
+    <div class="stat-body">
+      <div class="stat-value cyan">{{ stats.eventsPerMin }}</div>
+      <div class="stat-label">EVENTS / MIN</div>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,131 @@
+/* ── Container ───────────────────────────────────────────────────────────── */
+.attack-map-wrap {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-primary);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+
+/* ── Header strip ────────────────────────────────────────────────────────── */
+.attack-map-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 14px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.attack-map-pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239,68,68,0.6);
+  animation: atkPulse 1.8s infinite;
+  flex-shrink: 0;
+}
+@keyframes atkPulse {
+  0%   { box-shadow: 0 0 0 0   rgba(239,68,68,0.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(239,68,68,0);   }
+  100% { box-shadow: 0 0 0 0   rgba(239,68,68,0);   }
+}
+.attack-map-title {
+  font-size: 10px; font-family: var(--font-mono);
+  letter-spacing: 0.16em; color: var(--accent-cyan);
+  font-weight: 700; text-transform: uppercase;
+}
+.attack-map-route {
+  font-size: 11px; font-family: var(--font-mono);
+  color: var(--text-secondary); margin-left: auto;
+  letter-spacing: 0.04em;
+}
+
+/* ── Map canvas ──────────────────────────────────────────────────────────── */
+.attack-map-canvas {
+  height: 280px;
+  z-index: 0;
+}
+
+/* ── Pulsing ring at attacker origin ─────────────────────────────────────── */
+/* Rendered as a Leaflet DivIcon, so styles must be global or injected via
+   component styles with ::ng-deep / encapsulation: None strategy.
+   We use ::ng-deep so it reaches inside the Leaflet DOM. */
+:host ::ng-deep .atk-pulse-ring {
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 2px solid var(--c, #ef4444);
+  opacity: 0;
+  animation: atkRingPulse 2s ease-out infinite;
+}
+@keyframes atkRingPulse {
+  0%   { transform: scale(0.4); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0;   }
+}
+
+/* ── Dot markers ─────────────────────────────────────────────────────────── */
+:host ::ng-deep .atk-marker {
+  width: 16px; height: 16px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--c, #00d4ff);
+  box-shadow: 0 0 10px var(--c, #00d4ff);
+}
+:host ::ng-deep .atk-src {
+  background: rgba(239,68,68,0.25); --c: #ef4444;
+}
+:host ::ng-deep .atk-tgt {
+  background: rgba(0,212,255,0.2); --c: #00d4ff;
+  border-color: #00d4ff; box-shadow: 0 0 10px #00d4ff;
+}
+:host ::ng-deep .atk-marker-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--c, #00d4ff);
+}
+
+/* ── Floating IP labels ───────────────────────────────────────────────────── */
+:host ::ng-deep .atk-label {
+  font-family: monospace; font-size: 11px; font-weight: 700;
+  color: var(--c, #00d4ff);
+  background: rgba(5,12,30,0.85); border: 1px solid var(--c, #00d4ff);
+  border-radius: 4px; padding: 3px 7px; white-space: nowrap;
+  line-height: 1.4; text-shadow: 0 0 8px var(--c, #00d4ff);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+:host ::ng-deep .atk-label small { font-size: 9px; opacity: 0.75; }
+:host ::ng-deep .atk-label-src   { color: var(--c); border-color: var(--c); text-shadow: 0 0 8px var(--c); }
+:host ::ng-deep .atk-label-tgt   { color: #00d4ff;  border-color: #00d4ff; text-shadow: 0 0 8px #00d4ff; }
+
+/* ── Popup styling ───────────────────────────────────────────────────────── */
+:host ::ng-deep .atk-popup .leaflet-popup-content-wrapper {
+  background: rgba(5,12,30,0.96);
+  border: 1px solid rgba(0,212,255,0.3);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.7);
+  padding: 0;
+}
+:host ::ng-deep .atk-popup .leaflet-popup-tip-container { display: none; }
+:host ::ng-deep .atk-popup .leaflet-popup-content { margin: 0; }
+:host ::ng-deep .atk-popup-inner {
+  padding: 12px 14px; font-family: monospace;
+}
+:host ::ng-deep .atk-popup-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 8px;
+  padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+:host ::ng-deep .atk-popup-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 11px; color: rgba(200,220,240,0.8);
+  padding: 2px 0;
+}
+:host ::ng-deep .atk-popup-row b {
+  color: rgba(200,220,240,0.45); font-weight: 400; min-width: 60px;
+}
+:host ::ng-deep .atk-popup-row span { color: #e2f0ff; }
+
+/* ── Leaflet overrides ───────────────────────────────────────────────────── */
+:host ::ng-deep .leaflet-control-zoom a {
+  background: rgba(5,12,30,0.9) !important;
+  border-color: rgba(0,212,255,0.2) !important;
+  color: var(--accent-cyan) !important;
+}
+:host ::ng-deep .leaflet-control-zoom a:hover {
+  background: rgba(0,212,255,0.15) !important;
+}

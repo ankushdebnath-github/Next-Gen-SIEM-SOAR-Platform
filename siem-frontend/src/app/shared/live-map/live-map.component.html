@@ -1,0 +1,68 @@
+<section class="map-wrapper" [class.map-fullscreen]="isFullscreen">
+
+  <!-- ── Header bar ─────────────────────────────────────────────────── -->
+  <header class="map-header">
+    <div class="map-title">
+      <span class="pulse-dot"></span>
+      <h2 class="glow">LIVE THREAT MAP</h2>
+    </div>
+
+    <!-- ── IP focus badge ─────────────────────────────────────────── -->
+    <div *ngIf="selectedIp" class="ip-focus-badge">
+      <span class="ip-focus-icon">🎯</span>
+      <span class="ip-focus-label">FOCUSED:</span>
+      <span class="ip-focus-ip">{{ selectedIp }}</span>
+      <span class="ip-focus-count">{{ selectedIpCount }} events</span>
+    </div>
+
+    <div class="map-stats">
+      <div class="stat-pill">
+        <span class="stat-label">ACTIVE ARCS</span>
+        <span class="stat-value">{{ totalArcs }}</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-label">EVENTS/SEC</span>
+        <span class="stat-value">{{ eventsPerSec }}</span>
+      </div>
+    </div>
+    <!-- Fullscreen toggle -->
+    <button class="fullscreen-btn" (click)="toggleFullscreen()" [title]="isFullscreen ? 'Exit fullscreen' : 'Fullscreen map'">
+      <span *ngIf="!isFullscreen">⛶</span>
+      <span *ngIf="isFullscreen">✕</span>
+    </button>
+  </header>
+
+  <!-- ── Map container ──────────────────────────────────────────────── -->
+  <div #mapContainer class="map-canvas"></div>
+
+  <!-- ── IP Timeline Sparkline Panel (shown only when an IP is selected) ── -->
+  <div *ngIf="selectedIp" class="spark-panel">
+    <div class="spark-header">
+      <span class="spark-title">
+        <span class="spark-icon">📈</span>
+        IP ACTIVITY TIMELINE —
+        <span class="spark-ip">{{ selectedIp }}</span>
+      </span>
+      <span class="spark-meta">5 s buckets · last 5 min</span>
+    </div>
+    <canvas #sparkCanvas class="spark-canvas"></canvas>
+  </div>
+
+  <!-- ── Legend ─────────────────────────────────────────────────────── -->
+  <footer class="map-legend">
+    <span class="legend-item">
+      <span class="legend-dot" style="background:#22c55e"></span>Low
+    </span>
+    <span class="legend-item">
+      <span class="legend-dot" style="background:#f59e0b"></span>Medium
+    </span>
+    <span class="legend-item">
+      <span class="legend-dot" style="background:#f97316"></span>High
+    </span>
+    <span class="legend-item">
+      <span class="legend-dot" style="background:#ef4444"></span>Critical
+    </span>
+    <span class="legend-note">Arcs fade after 5 s</span>
+  </footer>
+
+</section>

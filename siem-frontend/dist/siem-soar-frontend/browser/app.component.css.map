@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["angular:styles/component:css;dd559a34138bbea4d3e279a7dfc90ffa953257dd693dd00951c924bb9e426f7f;D:/betsu/cyber projects/realtime attack/siem-frontend/src/app/app.component.ts"],
+  "sourcesContent": [":host { display: block; height: 100vh; overflow: hidden; }"],
+  "mappings": ";AAAA;AAAQ,WAAS;AAAO,UAAQ;AAAO,YAAU;AAAQ;",
+  "names": []
+}

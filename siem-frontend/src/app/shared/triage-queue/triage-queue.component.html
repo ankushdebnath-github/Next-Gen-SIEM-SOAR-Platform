@@ -1,0 +1,59 @@
+<section class="queue-wrapper">
+
+  <header class="queue-header">
+    <div class="queue-title">
+      <span class="icon">⚡</span>
+      <h2>TRIAGE QUEUE</h2>
+      <span class="row-count">{{ filteredThreats.length }}/{{ counts.Total }}</span>
+      <span class="click-hint">↖ click row to investigate</span>
+    </div>
+    <div class="filter-chips">
+      <button class="chip chip-all" [class.active]="activeFilter===''" (click)="setFilter('')">ALL</button>
+      <button *ngFor="let sev of ['Critical','High','Medium','Low']"
+        class="chip" [class]="'chip-'+sev.toLowerCase()" [class.active]="activeFilter===sev"
+        (click)="setFilter(sev)">
+        {{ sev }}<span class="chip-count">{{ getCount(sev) }}</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="table-scroll">
+    <table class="threat-table">
+      <thead>
+        <tr>
+          <th></th><th>TIME</th><th>SEVERITY</th><th>ATTACK TYPE</th>
+          <th>SOURCE IP</th><th>ORIGIN</th><th>TARGET IP</th><th>DESTINATION</th><th>PACKETS</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let evt of filteredThreats; trackBy: trackById"
+          [ngClass]="rowClass(evt)"
+          (click)="selectRow(evt)"
+          title="Investigate {{ evt.source_ip }} in OSINT Workbench">
+
+          <td class="td-icon">
+            <span class="inv-icon" [class.active]="selectedId === evt.id">🔍</span>
+          </td>
+          <td class="mono muted">{{ formatTime(evt.timestamp) }}</td>
+          <td><span [class]="severityBadgeClass(evt.severity)">{{ evt.severity }}</span></td>
+          <td class="attack-type">{{ evt.attack_type }}</td>
+          <td class="mono ip-cell">
+            <span [class]="reputationDotClass(evt.source_ip)"
+                  [title]="ipReputations.get(evt.source_ip) ? 'VT Risk: ' + ipReputations.get(evt.source_ip) : 'Not yet enriched'">
+            </span>
+            {{ evt.source_ip }}
+          </td>
+          <td><span class="country-name">{{ evt.source_country }}</span></td>
+          <td class="mono">{{ evt.target_ip }}</td>
+          <td><span class="country-name">{{ evt.target_country }}</span></td>
+          <td class="mono muted">{{ evt.packet_count | number }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div *ngIf="filteredThreats.length === 0" class="empty-state">
+      <span class="empty-icon">📡</span>
+      <p>Waiting for threat events…</p>
+    </div>
+  </div>
+
+</section>

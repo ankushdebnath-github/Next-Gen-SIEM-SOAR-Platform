@@ -1,0 +1,615 @@
+<!-- Backdrop -->
+<div class="drawer-backdrop" (click)="closeDrawer()"></div>
+
+<!-- Drawer panel -->
+<div class="drawer-panel">
+
+  <!-- ── Header ─────────────────────────────────────────────────────── -->
+  <header class="drawer-header">
+    <div class="drawer-title">
+      <span class="drawer-icon">🔬</span>
+      <div>
+        <div class="drawer-heading">OSINT INVESTIGATION WORKBENCH</div>
+        <div class="drawer-subheading">{{ ip }}</div>
+      </div>
+    </div>
+
+    <!-- Event quick-meta strip (from clicked row) -->
+    <div class="event-meta-strip" *ngIf="event">
+      <span class="ev-chip ev-attack">{{ event.attack_type }}</span>
+      <span class="ev-chip ev-sev"
+            [style.background]="severityBg(event.severity)"
+            [style.borderColor]="severityColor(event.severity)"
+            [style.color]="severityColor(event.severity)">
+        {{ event.severity }}
+      </span>
+      <span class="ev-chip ev-pkts">{{ event.packet_count | number }} pkts</span>
+      <span class="ev-chip ev-time">{{ formatTimestamp(event.timestamp) }}</span>
+    </div>
+
+    <div class="risk-badge" *ngIf="(data$ | async) as data"
+      [class]="'risk-' + data.meta.risk_level.toLowerCase()">
+      RISK: {{ data.meta.risk_level }}
+      <span class="risk-score">{{ data.meta.risk_score }}/100</span>
+    </div>
+
+    <button class="close-btn" (click)="closeDrawer()" title="Close workbench">✕</button>
+  </header>
+
+  <!-- ── Loading ────────────────────────────────────────────────────── -->
+  <div class="drawer-loading" *ngIf="loading$ | async">
+    <div class="spinner"></div>
+    <span>Querying OSINT sources…</span>
+    <span class="drawer-loading-detail">Fetching VirusTotal &amp; Shodan data for {{ ip }}</span>
+  </div>
+
+  <!-- ── Error ──────────────────────────────────────────────────────── -->
+  <div class="drawer-error" *ngIf="error$ | async as err">
+    <span>⚠</span>
+    <p>{{ err }}</p>
+    <button (click)="retry()">↺ Retry</button>
+  </div>
+
+  <!-- ── Main content ───────────────────────────────────────────────── -->
+  <div class="drawer-body" *ngIf="(data$ | async) as data">
+    <ng-container *ngIf="!(loading$ | async) && !(error$ | async)">
+
+      <div class="split-pane">
+
+        <!-- Left: tabbed panels -->
+        <div class="pane-graph">
+
+          <!-- ── Tab bar ───────────────────────────────────────────── -->
+          <div class="tab-bar">
+
+            <button class="tab-btn" [class.active]="activeTab==='attack'" (click)="activeTab='attack'">
+              <span>⚔</span> ATTACK PATH
+            </button>
+
+            <button class="tab-btn" [class.active]="activeTab==='graph'" (click)="activeTab='graph'">
+              <span>⬡</span> RELATIONSHIP GRAPH
+            </button>
+
+            <button class="tab-btn" [class.active]="activeTab==='shodan'" (click)="activeTab='shodan'">
+              <span>📡</span> SHODAN
+              <span class="tab-badge tab-badge-info" *ngIf="data.shodan?.total_ports">
+                {{ data.shodan.total_ports }} ports
+              </span>
+            </button>
+
+            <button class="tab-btn" [class.active]="activeTab==='vt'" (click)="activeTab='vt'">
+              <span>🛡</span> VT VERDICTS
+              <span class="tab-badge tab-badge-danger"
+                    *ngIf="data.virustotal?.last_analysis_stats?.malicious">
+                {{ data.virustotal.last_analysis_stats.malicious }} malicious
+              </span>
+            </button>
+
+          </div>
+
+          <!-- ══════════════════════════════════════════════════════════
+               TAB: ATTACK PATH
+               ══════════════════════════════════════════════════════════ -->
+          <div class="attack-panel" *ngIf="activeTab==='attack'">
+
+            <!-- No event context fallback -->
+            <div class="attack-no-event" *ngIf="!event">
+              <span class="attack-no-icon">⚔</span>
+              <p>No event context available.</p>
+              <p class="muted">Click a row in the triage queue to see the attack path.</p>
+            </div>
+
+            <ng-container *ngIf="event">
+
+              <!-- ── Flow diagram ────────────────────────────────── -->
+              <div class="attack-flow">
+
+                <!-- SOURCE NODE -->
+                <div class="flow-node flow-source">
+                  <div class="flow-node-icon">🌍</div>
+                  <div class="flow-node-label">ATTACKER</div>
+                  <div class="flow-node-ip">{{ event.source_ip }}</div>
+                  <div class="flow-node-country">{{ event.source_country }}</div>
+                  <div class="flow-node-risk risk-badge-sm"
+                       *ngIf="(data$ | async) as d"
+                       [class]="'risk-' + d.meta.risk_level.toLowerCase()">
+                    RISK {{ d.meta.risk_level }}
+                  </div>
+                </div>
+
+                <!-- ARROW + ATTACK TYPE -->
+                <div class="flow-arrow-group">
+                  <div class="flow-arrow-line">
+                    <div class="flow-arrow-beam"
+                         [style.background]="'linear-gradient(90deg,' + severityColor(event.severity) + ', transparent)'">
+                    </div>
+                    <div class="flow-arrow-head"
+                         [style.borderLeftColor]="severityColor(event.severity)">
+                    </div>
+                  </div>
+                  <div class="flow-attack-label">
+                    <span class="attack-type-badge"
+                          [style.borderColor]="severityColor(event.severity)"
+                          [style.color]="severityColor(event.severity)"
+                          [style.background]="severityBg(event.severity)">
+                      {{ event.attack_type }}
+                    </span>
+                    <span class="attack-sev-dot"
+                          [style.background]="severityColor(event.severity)">
+                    </span>
+                    <span class="attack-sev-text"
+                          [style.color]="severityColor(event.severity)">
+                      {{ event.severity }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- TARGET NODE -->
+                <div class="flow-node flow-target">
+                  <div class="flow-node-icon">🖥</div>
+                  <div class="flow-node-label">TARGET</div>
+                  <div class="flow-node-ip">{{ event.target_ip }}</div>
+                  <div class="flow-node-country">{{ event.target_country }}</div>
+                  <div class="flow-node-tag">INTERNAL ASSET</div>
+                </div>
+
+              </div>
+              <!-- end attack-flow -->
+
+              <!-- ── Embedded attack path map ───────────────────── -->
+              <app-attack-map [event]="event"></app-attack-map>
+
+              <!-- ── Event metadata grid ─────────────────────────── -->
+              <div class="attack-meta-grid">
+
+                <div class="meta-card">
+                  <div class="meta-card-icon">🕐</div>
+                  <div class="meta-card-body">
+                    <div class="meta-card-label">DETECTED</div>
+                    <div class="meta-card-value">{{ formatTimestamp(event.timestamp) }}</div>
+                  </div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-card-icon">📦</div>
+                  <div class="meta-card-body">
+                    <div class="meta-card-label">PACKET VOLUME</div>
+                    <div class="meta-card-value">{{ event.packet_count | number }}</div>
+                  </div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-card-icon">⚔</div>
+                  <div class="meta-card-body">
+                    <div class="meta-card-label">ATTACK VECTOR</div>
+                    <div class="meta-card-value">{{ event.attack_type }}</div>
+                  </div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-card-icon">📊</div>
+                  <div class="meta-card-body">
+                    <div class="meta-card-label">SEVERITY</div>
+                    <div class="meta-card-value"
+                         [style.color]="severityColor(event.severity)">
+                      {{ event.severity }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-card-icon">🌐</div>
+                  <div class="meta-card-body">
+                    <div class="meta-card-label">SOURCE GEO</div>
+                    <div class="meta-card-value">{{ event.source_country }}</div>
+                  </div>
+                </div>
+
+                <div class="meta-card">
+                  <div class="meta-card-icon">🎯</div>
+                  <div class="meta-card-body">
+                    <div class="meta-card-label">TARGET GEO</div>
+                    <div class="meta-card-value">{{ event.target_country }}</div>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- ── Description ─────────────────────────────────── -->
+              <div class="attack-desc" *ngIf="event.description">
+                <div class="attack-desc-label">EVENT DESCRIPTION</div>
+                <p class="attack-desc-text">{{ event.description }}</p>
+              </div>
+
+              <!-- ══════════════════════════════════════════════════
+                   CHARTS ROW: Donut · Gauge · Port bars
+                   ══════════════════════════════════════════════════ -->
+              <div class="charts-row" *ngIf="(data$ | async) as d">
+
+                <!-- ── 1. VT Engine Verdict Donut ──────────────── -->
+                <div class="chart-card">
+                  <div class="chart-card-label">VT ENGINE VERDICTS</div>
+                  <div class="chart-card-body donut-wrap">
+                    <svg viewBox="0 0 160 160" class="donut-svg">
+                      <!-- Slices -->
+                      <g *ngFor="let s of vtDonutSlices(d)">
+                        <path [attr.d]="s.path"
+                              [attr.fill]="s.color"
+                              [attr.opacity]="0.85"
+                              class="donut-slice">
+                          <title>{{ s.label }}: {{ s.count }} ({{ s.pct }}%)</title>
+                        </path>
+                      </g>
+                      <!-- Centre hole label -->
+                      <text x="80" y="76" text-anchor="middle"
+                            class="donut-centre-num">{{ vtTotal(d) }}</text>
+                      <text x="80" y="91" text-anchor="middle"
+                            class="donut-centre-lbl">ENGINES</text>
+                    </svg>
+
+                    <!-- Legend -->
+                    <div class="donut-legend">
+                      <ng-container *ngFor="let s of vtDonutSlices(d)">
+                        <div class="donut-legend-row">
+                          <span class="donut-legend-dot" [style.background]="s.color"></span>
+                          <span class="donut-legend-label">{{ s.label }}</span>
+                          <span class="donut-legend-val" [style.color]="s.color">{{ s.count }}</span>
+                        </div>
+                      </ng-container>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ── 2. Risk Score Gauge ──────────────────────── -->
+                <div class="chart-card">
+                  <div class="chart-card-label">RISK SCORE</div>
+                  <div class="chart-card-body gauge-wrap">
+                    <svg viewBox="0 0 180 100" class="gauge-svg">
+                      <!-- Track arc -->
+                      <path [attr.d]="gaugeArcPath(d.meta.risk_score, false)"
+                            fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="14"
+                            stroke-linecap="round"/>
+                      <!-- Filled arc -->
+                      <path [attr.d]="gaugeArcPath(d.meta.risk_score, true)"
+                            fill="none"
+                            [attr.stroke]="gaugeColor(d.meta.risk_score)"
+                            stroke-width="14" stroke-linecap="round"
+                            class="gauge-fill-arc">
+                      </path>
+                      <!-- Needle -->
+                      <line x1="90" y1="70"
+                            [attr.x2]="gaugeNeedle(d.meta.risk_score).x2"
+                            [attr.y2]="gaugeNeedle(d.meta.risk_score).y2"
+                            [attr.stroke]="gaugeColor(d.meta.risk_score)"
+                            stroke-width="2.5" stroke-linecap="round"
+                            class="gauge-needle"/>
+                      <circle cx="90" cy="70" r="5"
+                              [attr.fill]="gaugeColor(d.meta.risk_score)"/>
+                      <!-- Score label -->
+                      <text x="90" y="58" text-anchor="middle"
+                            class="gauge-score"
+                            [attr.fill]="gaugeColor(d.meta.risk_score)">
+                        {{ d.meta.risk_score }}
+                      </text>
+                      <text x="90" y="90" text-anchor="middle"
+                            class="gauge-label">/ 100</text>
+                      <!-- Range labels -->
+                      <text x="28" y="82" class="gauge-range-lbl">0</text>
+                      <text x="148" y="82" class="gauge-range-lbl">100</text>
+                    </svg>
+                    <div class="gauge-level"
+                         [style.color]="gaugeColor(d.meta.risk_score)">
+                      {{ d.meta.risk_level }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ── 3. Exposed Ports Bar Chart ───────────────── -->
+                <div class="chart-card chart-card-wide">
+                  <div class="chart-card-label">EXPOSED PORTS / CVE RISK</div>
+                  <div class="chart-card-body">
+                    <div class="port-bars" *ngIf="attackPortBars(d).length; else noPorts">
+                      <ng-container *ngFor="let b of attackPortBars(d)">
+                        <div class="port-bar-row">
+                          <span class="port-bar-label" [style.color]="b.color">{{ b.label }}</span>
+                          <div class="port-bar-track">
+                            <div class="port-bar-fill"
+                                 [style.width.%]="b.pct"
+                                 [style.background]="b.color">
+                            </div>
+                            <!-- CVE count bubble inside bar -->
+                            <span class="port-bar-cve" *ngIf="b.cveCount > 0">
+                              ⚠ {{ b.cveCount }} CVE{{ b.cveCount > 1 ? 's' : '' }}
+                            </span>
+                          </div>
+                        </div>
+                      </ng-container>
+                    </div>
+                    <ng-template #noPorts>
+                      <div class="chart-empty">No open ports detected</div>
+                    </ng-template>
+                  </div>
+                </div>
+
+              </div>
+              <!-- end charts-row -->
+
+              <!-- ── VT risk summary ─────────────────────────────── -->
+              <div class="attack-vt-summary" *ngIf="data.virustotal">
+                <div class="attack-vt-label">VIRUSTOTAL THREAT INTEL</div>
+                <div class="attack-vt-row">
+                  <div class="avt-pill avt-mal">
+                    <span class="avt-num">{{ data.virustotal.last_analysis_stats?.malicious ?? 0 }}</span>
+                    <span class="avt-lbl">Malicious</span>
+                  </div>
+                  <div class="avt-pill avt-sus">
+                    <span class="avt-num">{{ data.virustotal.last_analysis_stats?.suspicious ?? 0 }}</span>
+                    <span class="avt-lbl">Suspicious</span>
+                  </div>
+                  <div class="avt-pill avt-safe">
+                    <span class="avt-num">{{ data.virustotal.last_analysis_stats?.harmless ?? 0 }}</span>
+                    <span class="avt-lbl">Harmless</span>
+                  </div>
+                  <div class="avt-pill avt-info" *ngIf="data.virustotal.as_owner">
+                    <span class="avt-num">{{ data.virustotal.country }}</span>
+                    <span class="avt-lbl">{{ data.virustotal.as_owner }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ── Open ports quick-view ──────────────────────── -->
+              <div class="attack-ports-summary" *ngIf="data.shodan?.open_ports?.length">
+                <div class="attack-vt-label">OPEN PORTS ON ATTACKER</div>
+                <div class="attack-ports-row">
+                  <ng-container *ngFor="let p of data.shodan.open_ports">
+                    <span class="port-chip" [class.port-chip-cve]="p.cves?.length">
+                      {{ p.port }}/{{ p.protocol }}
+                      <span class="port-service" *ngIf="p.service">{{ p.service }}</span>
+                      <span class="cve-badge" *ngIf="p.cves?.length">⚠ {{ p.cves.length }} CVE</span>
+                    </span>
+                  </ng-container>
+                </div>
+              </div>
+
+            </ng-container>
+          </div>
+
+          <!-- ══════════════════════════════════════════════════════════
+               TAB: RELATIONSHIP GRAPH
+               ══════════════════════════════════════════════════════════ -->
+          <ng-container *ngIf="activeTab==='graph'">
+            <app-osint-graph
+              [graph]="data.graph"
+              (nodeSelected)="onNodeSelected($event)">
+            </app-osint-graph>
+          </ng-container>
+
+          <!-- ══════════════════════════════════════════════════════════
+               TAB: SHODAN
+               ══════════════════════════════════════════════════════════ -->
+          <div class="shodan-panel" *ngIf="activeTab==='shodan'">
+
+            <!-- Org / ISP / ASN / OS info row -->
+            <div class="shodan-info-bar">
+              <div class="shodan-info-card" *ngIf="data.shodan?.org">
+                <span class="si-icon">🏢</span>
+                <div>
+                  <div class="si-label">ORGANISATION</div>
+                  <div class="si-value">{{ data.shodan.org }}</div>
+                </div>
+              </div>
+              <div class="shodan-info-card" *ngIf="data.shodan?.isp">
+                <span class="si-icon">📡</span>
+                <div>
+                  <div class="si-label">ISP</div>
+                  <div class="si-value">{{ data.shodan.isp }}</div>
+                </div>
+              </div>
+              <div class="shodan-info-card" *ngIf="data.shodan?.asn">
+                <span class="si-icon">🌐</span>
+                <div>
+                  <div class="si-label">ASN</div>
+                  <div class="si-value">{{ data.shodan.asn }}</div>
+                </div>
+              </div>
+              <div class="shodan-info-card" *ngIf="data.shodan?.os">
+                <span class="si-icon">💻</span>
+                <div>
+                  <div class="si-label">OS</div>
+                  <div class="si-value">{{ data.shodan.os }}</div>
+                </div>
+              </div>
+              <div class="shodan-info-card" *ngIf="data.shodan?.last_update">
+                <span class="si-icon">🕐</span>
+                <div>
+                  <div class="si-label">LAST SCAN</div>
+                  <div class="si-value">{{ data.shodan.last_update | date:'dd MMM yyyy' }}</div>
+                </div>
+              </div>
+              <div class="shodan-info-card" *ngIf="data.shodan?.hostnames?.length">
+                <span class="si-icon">🔗</span>
+                <div>
+                  <div class="si-label">HOSTNAME</div>
+                  <div class="si-value">{{ data.shodan.hostnames[0] }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tags row -->
+            <div class="shodan-tags" *ngIf="data.shodan?.tags?.length">
+              <span class="shodan-tag" *ngFor="let tag of data.shodan.tags">{{ tag }}</span>
+            </div>
+
+            <!-- Port distribution bar chart -->
+            <div class="shodan-chart-section" *ngIf="data.shodan?.open_ports?.length">
+              <div class="shodan-section-label">PORT DISTRIBUTION</div>
+              <div class="shodan-bar-chart">
+                <div *ngFor="let bar of portChartBars(data)" class="chart-bar-row">
+                  <span class="chart-bar-label">{{ bar.label }}</span>
+                  <div class="chart-bar-track">
+                    <div class="chart-bar-fill"
+                         [style.width.%]="bar.pct"
+                         [style.background]="bar.color">
+                    </div>
+                  </div>
+                  <span class="chart-bar-val" [style.color]="bar.color">{{ bar.value }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Service cards + CVE badges -->
+            <div class="shodan-section-label" *ngIf="data.shodan?.open_ports?.length">
+              EXPOSED SERVICES
+            </div>
+            <div class="shodan-services-grid">
+              <div class="shodan-service-card" *ngFor="let p of data.shodan?.open_ports ?? []">
+
+                <div class="svc-header">
+                  <div class="svc-port-badge">{{ p.port }}<span class="svc-proto">/{{ p.protocol }}</span></div>
+                  <div class="svc-name">{{ p.service || p.protocol }}</div>
+                  <div class="svc-product" *ngIf="p.product">{{ p.product }}
+                    <span class="svc-version" *ngIf="p.version">{{ p.version }}</span>
+                  </div>
+                </div>
+
+                <!-- CVE badges -->
+                <div class="svc-cves" *ngIf="p.cves?.length">
+                  <span class="cve-pill" *ngFor="let cve of p.cves">
+                    ⚠ {{ cve }}
+                  </span>
+                </div>
+
+                <!-- Banner snippet -->
+                <div class="svc-banner" *ngIf="p.banner">
+                  <span class="banner-text">{{ p.banner | slice:0:120 }}</span>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Open ports table -->
+            <div class="shodan-section-label" style="margin-top:16px">PORTS TABLE</div>
+            <div class="shodan-table-wrap">
+              <table class="shodan-table">
+                <thead>
+                  <tr>
+                    <th>PORT</th>
+                    <th>PROTOCOL</th>
+                    <th>SERVICE</th>
+                    <th>PRODUCT</th>
+                    <th>VERSION</th>
+                    <th>CVEs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let p of data.shodan?.open_ports ?? []"
+                      [class.row-cve]="p.cves?.length">
+                    <td class="mono port-num">{{ p.port }}</td>
+                    <td class="mono muted">{{ p.protocol }}</td>
+                    <td class="svc-cell">{{ p.service || '—' }}</td>
+                    <td class="mono muted">{{ p.product || '—' }}</td>
+                    <td class="mono muted">{{ p.version || '—' }}</td>
+                    <td>
+                      <ng-container *ngIf="p.cves?.length; else noCve">
+                        <span class="cve-pill" *ngFor="let c of p.cves">{{ c }}</span>
+                      </ng-container>
+                      <ng-template #noCve><span class="muted">—</span></ng-template>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="shodan-empty" *ngIf="!data.shodan?.open_ports?.length">
+                <span>📡</span>
+                <p>No Shodan data available for this IP.</p>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ══════════════════════════════════════════════════════════
+               TAB: VT VERDICTS
+               ══════════════════════════════════════════════════════════ -->
+          <div class="vt-panel" *ngIf="activeTab==='vt'">
+
+            <div class="vt-summary" *ngIf="data.virustotal">
+              <div class="vt-stat vt-malicious">
+                <div class="vt-stat-val">{{ data.virustotal.last_analysis_stats?.malicious ?? 0 }}</div>
+                <div class="vt-stat-lbl">MALICIOUS</div>
+              </div>
+              <div class="vt-stat vt-suspicious">
+                <div class="vt-stat-val">{{ data.virustotal.last_analysis_stats?.suspicious ?? 0 }}</div>
+                <div class="vt-stat-lbl">SUSPICIOUS</div>
+              </div>
+              <div class="vt-stat vt-harmless">
+                <div class="vt-stat-val">{{ data.virustotal.last_analysis_stats?.harmless ?? 0 }}</div>
+                <div class="vt-stat-lbl">HARMLESS</div>
+              </div>
+              <div class="vt-stat vt-undetected">
+                <div class="vt-stat-val">{{ data.virustotal.last_analysis_stats?.undetected ?? 0 }}</div>
+                <div class="vt-stat-lbl">UNDETECTED</div>
+              </div>
+              <div class="vt-meta" *ngIf="data.virustotal.as_owner">
+                <span class="vt-meta-pill">{{ data.virustotal.country }}</span>
+                <span class="vt-meta-pill">{{ data.virustotal.as_owner }}</span>
+                <span class="vt-meta-pill" *ngIf="data.virustotal.network">{{ data.virustotal.network }}</span>
+                <span class="vt-meta-pill rep-{{ data.meta.risk_level.toLowerCase() }}"
+                      *ngIf="data.virustotal.reputation !== null">
+                  rep: {{ data.virustotal.reputation }}
+                </span>
+              </div>
+            </div>
+
+            <div class="vt-table-wrap">
+              <table class="vt-table">
+                <thead>
+                  <tr>
+                    <th>ENGINE</th>
+                    <th>VERDICT</th>
+                    <th>RESULT</th>
+                    <th>METHOD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let eng of data.virustotal?.engine_results ?? []"
+                      [class]="'vt-row-' + eng.category">
+                    <td class="eng-name">{{ eng.engine_name }}</td>
+                    <td>
+                      <span class="vt-verdict" [class]="'verdict-' + eng.category">
+                        {{ eng.category }}
+                      </span>
+                    </td>
+                    <td class="eng-result">{{ eng.result ?? '—' }}</td>
+                    <td class="eng-method muted">{{ eng.method ?? '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="vt-empty" *ngIf="!data.virustotal?.engine_results?.length">
+                No engine results available.
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+        <!-- end pane-graph -->
+
+        <div class="resize-handle"></div>
+
+        <!-- Right: node detail card (only relevant on graph tab) -->
+        <div class="pane-detail">
+          <div class="pane-label">NODE DETAIL</div>
+          <app-node-detail-card
+            [node]="selectedNode!"
+            (closed)="selectedNode = null">
+          </app-node-detail-card>
+        </div>
+
+      </div>
+      <!-- end split-pane -->
+
+    </ng-container>
+  </div>
+
+</div>
+
+<div class="d3-tooltip"></div>

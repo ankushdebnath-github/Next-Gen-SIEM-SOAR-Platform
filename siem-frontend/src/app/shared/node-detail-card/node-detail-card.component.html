@@ -1,0 +1,49 @@
+<aside class="detail-card" *ngIf="node">
+
+  <!-- Header -->
+  <div class="card-header">
+    <span class="type-label">{{ typeLabel }}</span>
+    <span class="node-label">{{ node.label }}</span>
+    <button class="close-btn" (click)="closed.emit()" title="Close">✕</button>
+  </div>
+
+  <!-- Summary rows (scalar fields) -->
+  <div class="summary-section" *ngIf="summaryRows.length">
+    <div class="section-title">PROPERTIES</div>
+    <table class="prop-table">
+      <tbody>
+        <tr *ngFor="let row of summaryRows">
+          <td class="prop-key">{{ row.key }}</td>
+          <td class="prop-val" [class]="valueClass(row)">{{ row.value }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- CVEs (port nodes) -->
+  <div class="array-section" *ngIf="arrayEntries('cves').length">
+    <div class="section-title">CVEs</div>
+    <div class="tag-list">
+      <span class="cve-tag" *ngFor="let cve of arrayEntries('cves')">{{ cve }}</span>
+    </div>
+  </div>
+
+  <!-- Tags -->
+  <div class="array-section" *ngIf="arrayEntries('tags').length">
+    <div class="section-title">TAGS</div>
+    <div class="tag-list">
+      <span class="tag" *ngFor="let tag of arrayEntries('tags')">{{ tag }}</span>
+    </div>
+  </div>
+
+  <!-- Raw JSON -->
+  <div class="json-section">
+    <div class="section-title">RAW JSON</div>
+    <pre class="json-pre">{{ prettyJson }}</pre>
+  </div>
+
+</aside>
+
+<aside class="detail-card detail-card--empty" *ngIf="!node">
+  <p>Click a node in the graph to inspect its data.</p>
+</aside>

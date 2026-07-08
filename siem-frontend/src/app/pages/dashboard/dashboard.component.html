@@ -1,0 +1,41 @@
+<div class="dashboard">
+
+  <!-- ── Top navigation bar ──────────────────────────────────────────── -->
+  <nav class="top-nav">
+    <div class="nav-brand">
+      <div class="nav-logo">🛡</div>
+      <div>
+        <div class="nav-name glow">AEGIS SIEM</div>
+        <div class="nav-subtitle">SECURITY OPERATIONS CENTER</div>
+      </div>
+    </div>
+
+    <div class="nav-right">
+      <div class="conn-badge" [class]="isConnected ? 'connected' : 'disconnected'">
+        <span class="conn-dot"></span>
+        {{ isConnected ? 'LIVE' : 'OFFLINE' }}
+      </div>
+      <span class="nav-time">{{ clock }}</span>
+    </div>
+  </nav>
+
+  <!-- ── Main content ────────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Live attack map — pass selected IP so arcs for other IPs dim -->
+    <app-live-map [selectedIp]="selectedIp" />
+
+    <!-- Triage table — rowClick opens the OSINT workbench -->
+    <app-triage-queue (rowClick)="openWorkbench($event)" />
+
+  </main>
+
+  <!-- ── OSINT Workbench drawer (rendered at root so it overlays everything) -->
+  <app-workbench-drawer
+    *ngIf="workbenchIp"
+    [ip]="workbenchIp"
+    [event]="workbenchEvent"
+    (drawerClosed)="closeWorkbench()">
+  </app-workbench-drawer>
+
+</div>

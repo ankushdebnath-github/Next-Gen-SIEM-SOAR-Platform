@@ -1,0 +1,10 @@
+<div class="attack-map-wrap">
+  <div class="attack-map-header">
+    <span class="attack-map-pulse"></span>
+    <span class="attack-map-title">ATTACK PATH MAP</span>
+    <span class="attack-map-route" *ngIf="event">
+      {{ event.source_ip }} → {{ event.target_ip }}
+    </span>
+  </div>
+  <div #mapEl class="attack-map-canvas"></div>
+</div>
